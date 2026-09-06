@@ -128,68 +128,84 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
 
     all_beams = []
 
-    # Cutting rule (outer dimensions):
-    x_len = length - profile_size
-    y_len = width - profile_size
+    # Correct cutting rule for seamless connection:
+    # X beam length = outer_length - 2*profile_size (fits between inner faces of Z posts)
+    # Y beam length = outer_width - 2*profile_size (fits between inner faces of Z posts)
+    # Z post length = full height
+    x_len = length - 2 * profile_size
+    y_len = width - 2 * profile_size
     z_len = height
 
     # Z positions for horizontal layers
     z_positions = _z_layer_positions(height, z_layers)
 
     # ---- X Beams: use Draft.make_array ----
-    # Create one X beam at origin, then array to ±Y/2 positions
+    # X beams span between inner faces of Z posts
+    # Position: Y = ±(width/2 - profile_size) = inner face of Z post
     for idx, z_pos in enumerate(z_positions):
-        # Create base X beam at origin, Z=z_pos
         x_shape = _make_beam_shape(x_len, profile, 'X')
         x_base = doc.addObject('Part::Feature', 'XBeamBase%d' % idx)
         x_base.Shape = x_shape
         x_base.Placement = Base.Placement(Base.Vector(0, 0, z_pos), Base.Rotation())
         
-        # Array: 2 items along Y, spaced by y_len (centered at origin)
-        # First at -y_len/2, second at +y_len/2
+        # Array: 2 items along Y, spaced by 2*(width/2 - profile_size)
+        y_spacing = width - 2 * profile_size  # distance between inner faces
         x_array = Draft.make_array(x_base, 
-                                   Base.Vector(0, y_len, 0),  # xvector
-                                   Base.Vector(0, 0, 0),     # yvector (not used)
-                                   2, 1)                       # xnum, ynum
+                                   Base.Vector(0, y_spacing, 0),  # xvector
+                                   Base.Vector(0, 0, 0),         # yvector (not used)
+                                   2, 1)                           # xnum, ynum
         x_array.Label = u'X-横梁-层%d' % (idx + 1)
-        x_array.Placement = Base.Placement(Base.Vector(0, -y_len/2, 0), Base.Rotation())
+        # First beam at Y = -(width/2 - profile_size), second at Y = +(width/2 - profile_size)
+        x_array.Placement = Base.Placement(Base.Vector(0, -(width/2 - profile_size), 0), Base.Rotation())
         frame_group.addObject(x_array)
         
         all_beams.append({'part': u'X-横梁', 'profile': profile, 'length': x_len, 'qty': 2, 'z': z_pos})
 
     # ---- Y Beams: use Draft.make_array ----
-    # Create one Y beam at origin, then array to ±X/2 positions
+    # Y beams span between inner faces of Z posts
+    # Position: X = ±(length/2 - profile_size) = inner face of Z post
     for idx, z_pos in enumerate(z_positions):
         y_shape = _make_beam_shape(y_len, profile, 'Y')
         y_base = doc.addObject('Part::Feature', 'YBeamBase%d' % idx)
         y_base.Shape = y_shape
         y_base.Placement = Base.Placement(Base.Vector(0, 0, z_pos), Base.Rotation())
         
-        # Array: 2 items along X, spaced by x_len
+        # Array: 2 items along X, spaced by 2*(length/2 - profile_size)
+        x_spacing = length - 2 * profile_size  # distance between inner faces
         y_array = Draft.make_array(y_base,
-                                   Base.Vector(x_len, 0, 0),   # xvector
-                                   Base.Vector(0, 0, 0),       # yvector (not used)
-                                   2, 1)                       # xnum, ynum
+                                   Base.Vector(x_spacing, 0, 0),   # xvector
+                                   Base.Vector(0, 0, 0),           # yvector (not used)
+                                   2, 1)                           # xnum, ynum
         y_array.Label = u'Y-纵梁-层%d' % (idx + 1)
-        y_array.Placement = Base.Placement(Base.Vector(-x_len/2, 0, 0), Base.Rotation())
+        # First beam at X = -(length/2 - profile_size), second at X = +(length/2 - profile_size)
+        y_array.Placement = Base.Placement(Base.Vector(-(length/2 - profile_size), 0, 0), Base.Rotation())
         frame_group.addObject(y_array)
         
         all_beams.append({'part': u'Y-纵梁', 'profile': profile, 'length': y_len, 'qty': 2, 'z': z_pos})
 
     # ---- Z Posts: use Draft.make_array ----
-    # Create one Z post at origin, then array to 4 corners
+    # Z posts at corners, outer faces aligned with frame outer dimensions
+    # Position: X = ±(length/2 - profile_size/2), Y = ±(width/2 - profile_size/2)
     z_shape = _make_beam_shape(z_len, profile, 'Z')
     z_base = doc.addObject('Part::Feature', 'ZPostBase')
     z_base.Shape = z_shape
     z_base.Placement = Base.Placement(Base.Vector(0, 0, 0), Base.Rotation())
     
-    # Array: 2x2 grid in XY plane, spaced by x_len and y_len
+    # Array: 2x2 grid in XY plane
+    # X spacing = length - profile_size (center-to-center)
+    # Y spacing = width - profile_size (center-to-center)
+    x_spacing = length - profile_size
+    y_spacing = width - profile_size
     z_array = Draft.make_array(z_base,
-                               Base.Vector(x_len, 0, 0),       # xvector
-                               Base.Vector(0, y_len, 0),       # yvector
-                               2, 2)                           # xnum, ynum
+                               Base.Vector(x_spacing, 0, 0),       # xvector
+                               Base.Vector(0, y_spacing, 0),         # yvector
+                               2, 2)                                 # xnum, ynum
     z_array.Label = u'Z-立柱'
-    z_array.Placement = Base.Placement(Base.Vector(-x_len/2, -y_len/2, 0), Base.Rotation())
+    # First post at (-(length/2 - profile_size/2), -(width/2 - profile_size/2))
+    z_array.Placement = Base.Placement(
+        Base.Vector(-(length/2 - profile_size/2), -(width/2 - profile_size/2), 0), 
+        Base.Rotation()
+    )
     frame_group.addObject(z_array)
     
     all_beams.append({'part': u'Z-立柱', 'profile': profile, 'length': z_len, 'qty': 4, 'z': 0.0})
