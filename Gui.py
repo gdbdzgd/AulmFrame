@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """AlumFrame GUI — Task panel for the aluminum frame generator.
 
-Provides a FreeCAD task panel interface for generating aluminum frames.
-The panel appears in the left sidebar when the workbench is activated.
+Two modes:
+- New frame: generate into a new document
+- Edit frame: load parameters from the selected/current frame and rebuild in place
 """
 
 try:
@@ -20,275 +21,249 @@ except ImportError:
 
 import FreeCAD
 import FreeCADGui
-from . import AlumFrame
+
+from .config import PROFILES
+from . import make_frame, get_bom_summary, export_bom_csv
+from .frame_builder import FrameBuilder
 
 
 class AlumFrameTaskPanel:
     """Task panel for aluminum frame generator (appears in left sidebar)."""
 
-    def __init__(self):
+    def __init__(self, edit_selected=False):
         if QtWidgets is None:
             raise RuntimeError('PySide/PySide2/PySide6 not available')
-        
+
         self.form = QtWidgets.QWidget()
         self.form.setWindowTitle(u'铝型材框架生成器')
+        self._target_doc_name = None
+        self._last_beams = None
         self._build_ui()
-        self._last_boms = None
+        self._load_from_context(prefer_selection=edit_selected)
 
+    # ========== UI ==========
     def _build_ui(self):
-        """Build the task panel UI."""
         layout = QtWidgets.QVBoxLayout(self.form)
         layout.setSpacing(10)
         layout.setContentsMargins(10, 10, 10, 10)
 
-        # Title
         title = QtWidgets.QLabel(u'<h3>铝型材框架生成器</h3>')
         title.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(title)
+
+        # Mode / target status
+        self.target_label = QtWidgets.QLabel(u'')
+        self.target_label.setWordWrap(True)
+        layout.addWidget(self.target_label)
 
         # Parameters group
         params_group = QtWidgets.QGroupBox(u'参数设置')
         params_layout = QtWidgets.QFormLayout(params_group)
         params_layout.setSpacing(5)
 
-        # Profile combo
         self.profile_combo = QtWidgets.QComboBox()
-        keys = sorted(AlumFrame.PROFILES.keys())
-        for k in keys:
+        for k in sorted(PROFILES.keys()):
             self.profile_combo.addItem(k)
-        idx = self.profile_combo.findText('40x40 方管')
+        idx = self.profile_combo.findText(u'40x40 方管')
         if idx >= 0:
             self.profile_combo.setCurrentIndex(idx)
         params_layout.addRow(u'型材规格:', self.profile_combo)
 
-        # Length (X)
         self.length_spin = QtWidgets.QDoubleSpinBox()
-        self.length_spin.setRange(10, 20000)
+        self.length_spin.setRange(100, 20000)
         self.length_spin.setValue(600)
         self.length_spin.setSuffix(' mm')
         params_layout.addRow(u'长度 (X):', self.length_spin)
 
-        # Width (Y)
         self.width_spin = QtWidgets.QDoubleSpinBox()
-        self.width_spin.setRange(10, 20000)
+        self.width_spin.setRange(100, 20000)
         self.width_spin.setValue(400)
         self.width_spin.setSuffix(' mm')
         params_layout.addRow(u'宽度 (Y):', self.width_spin)
 
-        # Height (Z)
         self.height_spin = QtWidgets.QDoubleSpinBox()
-        self.height_spin.setRange(10, 20000)
+        self.height_spin.setRange(100, 20000)
         self.height_spin.setValue(500)
         self.height_spin.setSuffix(' mm')
         params_layout.addRow(u'高度 (Z):', self.height_spin)
 
-        # Z layers
         self.z_layers_spin = QtWidgets.QSpinBox()
         self.z_layers_spin.setRange(1, 20)
         self.z_layers_spin.setValue(1)
         params_layout.addRow(u'Z层数:', self.z_layers_spin)
 
-        # Material
         self.material_edit = QtWidgets.QLineEdit('Aluminum 6061')
         params_layout.addRow(u'材料:', self.material_edit)
 
         layout.addWidget(params_group)
 
         # Action buttons
-        btn_layout = QtWidgets.QHBoxLayout()
-        self.gen_btn = QtWidgets.QPushButton(u'生成框架')
-        self.gen_btn.setToolTip(u'根据当前参数生成框架')
+        row1 = QtWidgets.QHBoxLayout()
+        self.gen_btn = QtWidgets.QPushButton(u'生成 / 更新框架')
+        self.gen_btn.setToolTip(u'按当前参数生成；编辑模式下就地重建当前文档的框架')
         self.gen_btn.clicked.connect(self._generate)
-        
-        self.preview_btn = QtWidgets.QPushButton(u'预览')
-        self.preview_btn.setToolTip(u'预览框架（暂不支持）')
-        self.preview_btn.setEnabled(False)
-        
-        btn_layout.addWidget(self.gen_btn)
-        btn_layout.addWidget(self.preview_btn)
-        layout.addLayout(btn_layout)
+        self.load_btn = QtWidgets.QPushButton(u'读取选中参数')
+        self.load_btn.setToolTip(u'从选中的框架（或其子对象）读取参数')
+        self.load_btn.clicked.connect(self._load_selected)
+        row1.addWidget(self.gen_btn)
+        row1.addWidget(self.load_btn)
+        layout.addLayout(row1)
 
-        # Export button
+        row2 = QtWidgets.QHBoxLayout()
+        self.new_btn = QtWidgets.QPushButton(u'新建 (重置)')
+        self.new_btn.setToolTip(u'切换到新建模式：下次生成将创建新文档')
+        self.new_btn.clicked.connect(self._reset_new)
         self.bom_btn = QtWidgets.QPushButton(u'导出BOM (CSV)')
         self.bom_btn.setToolTip(u'导出物料清单到CSV文件')
         self.bom_btn.clicked.connect(self._export_bom)
-        layout.addWidget(self.bom_btn)
+        row2.addWidget(self.new_btn)
+        row2.addWidget(self.bom_btn)
+        layout.addLayout(row2)
 
         # Result area
         result_group = QtWidgets.QGroupBox(u'生成结果')
         result_layout = QtWidgets.QVBoxLayout(result_group)
-        self.result_label = QtWidgets.QLabel(u'点击"生成框架"开始')
+        self.result_label = QtWidgets.QLabel(u'点击"生成 / 更新框架"开始')
         self.result_label.setWordWrap(True)
         self.result_label.setMinimumHeight(80)
         result_layout.addWidget(self.result_label)
         layout.addWidget(result_group)
 
-        # Help text
         help_label = QtWidgets.QLabel(
-            u'<small><i>提示：切换出此工作台可关闭面板</i></small>'
+            u'<small><i>提示：选中框架后点"读取选中参数"可编辑已有框架</i></small>'
         )
         help_label.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(help_label)
 
         layout.addStretch()
 
-    def _generate(self):
-        """Generate the frame with current parameters."""
-        profile = self.profile_combo.currentText()
-        length = self.length_spin.value()
-        width = self.width_spin.value()
-        height = self.height_spin.value()
-        z_layers = self.z_layers_spin.value()
-        material = self.material_edit.text() or 'Aluminum 6061'
+    # ========== Helpers ==========
+    def _read_params(self):
+        return {
+            'profile': self.profile_combo.currentText(),
+            'length': self.length_spin.value(),
+            'width': self.width_spin.value(),
+            'height': self.height_spin.value(),
+            'z_layers': self.z_layers_spin.value(),
+            'material': self.material_edit.text() or 'Aluminum 6061',
+        }
 
+    def _apply_params(self, p):
+        idx = self.profile_combo.findText(p.get('profile', ''))
+        if idx >= 0:
+            self.profile_combo.setCurrentIndex(idx)
+        self.length_spin.setValue(p.get('length', 600))
+        self.width_spin.setValue(p.get('width', 400))
+        self.height_spin.setValue(p.get('height', 500))
+        self.z_layers_spin.setValue(max(1, p.get('z_layers', 1)))
+        self.material_edit.setText(p.get('material', 'Aluminum 6061'))
+
+    def _update_target_label(self):
+        if self._target_doc_name:
+            try:
+                doc = FreeCAD.getDocument(self._target_doc_name)
+                label = doc.Label
+            except Exception:
+                label = self._target_doc_name
+            self.target_label.setText(
+                u'<font color="#2a7"><b>编辑模式:</b> 更新文档「%s」中的框架</font>' % label)
+        else:
+            self.target_label.setText(
+                u'<font color="#777"><b>新建模式:</b> 将生成新文档</font>')
+
+    def _set_target(self, frame_group):
+        if frame_group is not None and frame_group.Document is not None:
+            self._target_doc_name = frame_group.Document.Name
+        else:
+            self._target_doc_name = None
+        self._update_target_label()
+
+    # ========== Actions ==========
+    def _load_from_context(self, prefer_selection=True):
+        """Load parameters from selection or the active document's frame."""
+        frame = None
+        if prefer_selection:
+            for obj in FreeCADGui.Selection.getSelection():
+                frame = FrameBuilder.find_frame_group(obj=obj)
+                if frame is not None:
+                    break
+        if frame is None:
+            frame = FrameBuilder.find_frame_group(doc=FreeCAD.ActiveDocument)
+        if frame is not None:
+            self._apply_params(FrameBuilder.get_frame_params(frame))
+            self._set_target(frame)
+        else:
+            self._set_target(None)
+
+    def _load_selected(self):
+        for obj in FreeCADGui.Selection.getSelection():
+            frame = FrameBuilder.find_frame_group(obj=obj)
+            if frame is not None:
+                self._apply_params(FrameBuilder.get_frame_params(frame))
+                self._set_target(frame)
+                self.result_label.setText(u'<font color="green">✓ 已读取选中框架参数</font>')
+                return
+        self.result_label.setText(
+            u'<font color="orange">未选中框架（请选中框架组或其任意子对象）</font>')
+
+    def _reset_new(self):
+        self._set_target(None)
+        self.result_label.setText(u'已重置为新建模式，点击"生成 / 更新框架"创建新文档')
+
+    def _generate(self):
+        p = self._read_params()
+        doc = None
+        if self._target_doc_name:
+            try:
+                doc = FreeCAD.getDocument(self._target_doc_name)
+            except Exception:
+                doc = None
         try:
-            doc, beams, boms = AlumFrame.make_frame(profile, length, width, height, material, z_layers)
-            self._last_boms = boms
-            summary = AlumFrame.get_bom_summary(boms)
-            lines = [u'<b>✓ 框架已生成</b>']
-            lines.append(u'<hr>')
-            lines.append(u'<b>BOM 汇总:</b>')
+            doc, beams = make_frame(
+                p['profile'], p['length'], p['width'], p['height'],
+                p['material'], p['z_layers'], doc=doc)
+            self._target_doc_name = doc.Name
+            self._last_beams = beams
+            self._update_target_label()
+
+            summary = get_bom_summary(beams)
+            lines = [u'<b>✓ 框架已生成</b>', u'<hr>', u'<b>BOM 汇总:</b>']
             for k, v in sorted(summary.items()):
                 lines.append(u'  %s: 数量=%d, 总长=%.1fmm' % (k, v['qty'], v['length']))
             lines.append(u'<hr>')
-            lines.append(u'共 <b>%d</b> 根型材' % len(beams))
-            lines.append(u'Z层数: <b>%d</b>' % z_layers)
+            lines.append(u'共 <b>%d</b> 项型材, Z层数: <b>%d</b>' % (len(beams), p['z_layers']))
             self.result_label.setText('<br>'.join(lines))
-            
-            # Switch to 3D view to show the result
+
             FreeCADGui.activeDocument().activeView().viewIsometric()
             FreeCADGui.SendMsgToActiveView("ViewFit")
         except Exception as e:
             self.result_label.setText(u'<font color="red">错误: %s</font>' % str(e))
 
     def _export_bom(self):
-        """Export BOM to CSV file."""
-        if self._last_boms is None:
+        if self._last_beams is None:
             self.result_label.setText(u'<font color="orange">请先生成框架</font>')
             return
         filepath, _ = QtWidgets.QFileDialog.getSaveFileName(
             self.form, u'保存BOM', 'bom.csv', 'CSV Files (*.csv)')
         if filepath:
             try:
-                AlumFrame.export_bom_csv(self._last_boms, filepath,
-                                         self.material_edit.text() or 'Aluminum 6061')
-                self.result_label.setText(u'<font color="green">✓ BOM已导出至: %s</font>' % filepath)
+                export_bom_csv(self._last_beams, filepath,
+                               self.material_edit.text() or 'Aluminum 6061')
+                self.result_label.setText(
+                    u'<font color="green">✓ BOM已导出至: %s</font>' % filepath)
             except Exception as e:
                 self.result_label.setText(u'<font color="red">导出错误: %s</font>' % str(e))
 
+    # ========== Task panel protocol ==========
     def getStandardButtons(self):
-        """Return standard buttons for task panel (Close button)."""
         return QtWidgets.QDialogButtonBox.Close
 
     def reject(self):
-        """Handle panel close."""
         FreeCADGui.Control.closeDialog()
 
 
-# Keep backward compatibility - AlumFrameDialog for direct use
-class AlumFrameDialog(QtWidgets.QDialog):
-    """Standalone dialog for generating aluminum frames (for backward compatibility)."""
-
-    def __init__(self, parent=None):
-        if QtWidgets is None:
-            raise RuntimeError('PySide/PySide2/PySide6 not available')
-        super(AlumFrameDialog, self).__init__(parent)
-        self.setWindowTitle(u'铝型材框架生成器')
-        self.setMinimumWidth(340)
-        self._build_ui()
-
-    def _build_ui(self):
-        layout = QtWidgets.QFormLayout(self)
-
-        # Profile combo
-        self.profile_combo = QtWidgets.QComboBox()
-        keys = sorted(AlumFrame.PROFILES.keys())
-        for k in keys:
-            self.profile_combo.addItem(k)
-        idx = self.profile_combo.findText('40x40 方管')
-        if idx >= 0:
-            self.profile_combo.setCurrentIndex(idx)
-        layout.addRow(u'型材规格:', self.profile_combo)
-
-        # Length (X)
-        self.length_spin = QtWidgets.QDoubleSpinBox()
-        self.length_spin.setRange(10, 20000)
-        self.length_spin.setValue(600)
-        self.length_spin.setSuffix(' mm')
-        layout.addRow(u'长度 (X):', self.length_spin)
-
-        # Width (Y)
-        self.width_spin = QtWidgets.QDoubleSpinBox()
-        self.width_spin.setRange(10, 20000)
-        self.width_spin.setValue(400)
-        self.width_spin.setSuffix(' mm')
-        layout.addRow(u'宽度 (Y):', self.width_spin)
-
-        # Height (Z)
-        self.height_spin = QtWidgets.QDoubleSpinBox()
-        self.height_spin.setRange(10, 20000)
-        self.height_spin.setValue(500)
-        self.height_spin.setSuffix(' mm')
-        layout.addRow(u'高度 (Z):', self.height_spin)
-
-        # Z layers
-        self.z_layers_spin = QtWidgets.QSpinBox()
-        self.z_layers_spin.setRange(1, 20)
-        self.z_layers_spin.setValue(1)
-        layout.addRow(u'Z层数:', self.z_layers_spin)
-
-        # Material
-        self.material_edit = QtWidgets.QLineEdit('Aluminum 6061')
-        layout.addRow(u'材料:', self.material_edit)
-
-        # Buttons
-        btn_layout = QtWidgets.QHBoxLayout()
-        self.gen_btn = QtWidgets.QPushButton(u'生成框架')
-        self.gen_btn.clicked.connect(self._generate)
-        self.bom_btn = QtWidgets.QPushButton(u'导出BOM(CSV)')
-        self.bom_btn.clicked.connect(self._export_bom)
-        btn_layout.addWidget(self.gen_btn)
-        btn_layout.addWidget(self.bom_btn)
-        layout.addRow(btn_layout)
-
-        # Result label
-        self.result_label = QtWidgets.QLabel('')
-        self.result_label.setWordWrap(True)
-        layout.addRow(self.result_label)
-
-        self._last_boms = None
-
-    def _generate(self):
-        profile = self.profile_combo.currentText()
-        length = self.length_spin.value()
-        width = self.width_spin.value()
-        height = self.height_spin.value()
-        z_layers = self.z_layers_spin.value()
-        material = self.material_edit.text() or 'Aluminum 6061'
-
-        try:
-            doc, beams, boms = AlumFrame.make_frame(profile, length, width, height, material, z_layers)
-            self._last_boms = boms
-            summary = AlumFrame.get_bom_summary(boms)
-            lines = [u'✓ 框架已生成\n', u'BOM 汇总:']
-            for k, v in sorted(summary.items()):
-                lines.append(u'  %s: 数量=%d, 总长=%.1fmm' % (k, v['qty'], v['length']))
-            lines.append(u'\n共 %d 根型材' % len(beams))
-            lines.append(u'  Z层数: %d' % z_layers)
-            self.result_label.setText('\n'.join(lines))
-        except Exception as e:
-            self.result_label.setText(u'错误: %s' % str(e))
-
-    def _export_bom(self):
-        if self._last_boms is None:
-            self.result_label.setText(u'请先生成框架')
-            return
-        filepath, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self, u'保存BOM', 'bom.csv', 'CSV Files (*.csv)')
-        if filepath:
-            try:
-                AlumFrame.export_bom_csv(self._last_boms, filepath,
-                                         self.material_edit.text() or 'Aluminum 6061')
-                self.result_label.setText(u'BOM已导出至: %s' % filepath)
-            except Exception as e:
-                self.result_label.setText(u'导出错误: %s' % str(e))
+def open_task_panel(edit_selected=False):
+    """Open the frame generator task panel."""
+    panel = AlumFrameTaskPanel(edit_selected=edit_selected)
+    FreeCADGui.Control.showDialog(panel)
+    return panel

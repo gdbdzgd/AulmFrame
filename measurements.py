@@ -1,92 +1,93 @@
 # -*- coding: utf-8 -*-
-"""
-Measurement annotations module for Aluminum Frame Generator.
+"""Measurement annotations module.
+
+Uses standard FreeCAD Measure objects (Measure::MeasureLength, the same
+type created by Std_Measure) so annotations are parametric measurements
+of real geometry instead of decorative lines.
+
+Each dimension is a chain of real edges:
+- Length (X): post X-edge + X-beam edge + post X-edge
+- Width  (Y): post Y-edge + Y-beam edge + post Y-edge
+- Height (Z): post vertical edge
 """
 
 try:
-    from FreeCAD import Base
-    import Part
+    import FreeCAD
 except ImportError:
-    Base = None
-    Part = None
+    FreeCAD = None
 
 
-def add_measurement_annotations(doc, group, outer_length, outer_width, outer_height, z_layers):
-    """Add dimension annotations using text labels at frame corners.
-    
+def add_measurement_annotations(doc, group, outer_length, outer_width,
+                                outer_height, z_layers, bases, profile_size):
+    """Add dimension annotations using Measure::MeasureLength objects.
+
     Parameters
     ----------
     doc : FreeCAD document
     group : App::DocumentObjectGroup
-        Frame group to add annotations to
-    outer_length : float
-        Frame outer length
-    outer_width : float
-        Frame outer width
-    outer_height : float
-        Frame outer height
+        Frame group; the Dimensions group is created inside it
+    outer_length, outer_width, outer_height : float
+        Frame outer dimensions (mm)
     z_layers : int
-        Number of Z layers
+        Number of Z layers (reserved for future use)
+    bases : dict
+        {'X': x_beam_base, 'Y': y_beam_base, 'Z': z_post_base}
+    profile_size : float
+        Profile width (mm)
     """
-    # Create a dimension annotation group
+    post = bases.get('Z')
+    x_base = bases.get('X')
+    y_base = bases.get('Y')
+    if post is None or x_base is None or y_base is None:
+        return None
+
     dim_group = doc.addObject('App::DocumentObjectGroup', 'Dimensions')
     dim_group.Label = u'尺寸标注'
     group.addObject(dim_group)
-    
-    # X dimension (length) - along front bottom edge at Z=0
-    _create_dimension_line(doc, dim_group, 'DimX',
-                        Base.Vector(-outer_length/2, outer_width/2 + 20, 0),
-                        Base.Vector(outer_length/2, outer_width/2 + 20, 0),
-                        u'L=%d' % outer_length)
-    
-    # Y dimension (width) - along right bottom edge at Z=0
-    _create_dimension_line(doc, dim_group, 'DimY',
-                        Base.Vector(outer_length/2 + 20, -outer_width/2, 0),
-                        Base.Vector(outer_length/2 + 20, outer_width/2, 0),
-                        u'W=%d' % outer_width)
-    
-    # Z dimension (height) - along right back edge at X/Y offset
-    _create_dimension_line(doc, dim_group, 'DimZ',
-                        Base.Vector(outer_length/2 + 20, outer_width/2 + 20, 0),
-                        Base.Vector(outer_length/2 + 20, outer_width/2 + 20, outer_height),
-                        u'H=%d' % outer_height)
+
+    # Length (X) = profile + (L - 2*profile) + profile
+    _add_length_measure(doc, dim_group, 'DimX', u'长度 (X)', [
+        (post, _find_edges(post, profile_size, 'x')[0]),
+        (x_base, _find_edges(x_base, outer_length - 2 * profile_size, 'x')[0]),
+        (post, _find_edges(post, profile_size, 'x')[1]),
+    ])
+
+    # Width (Y) = profile + (W - 2*profile) + profile
+    _add_length_measure(doc, dim_group, 'DimY', u'宽度 (Y)', [
+        (post, _find_edges(post, profile_size, 'y')[0]),
+        (y_base, _find_edges(y_base, outer_width - 2 * profile_size, 'y')[0]),
+        (post, _find_edges(post, profile_size, 'y')[1]),
+    ])
+
+    # Height (Z) - single vertical post edge
+    _add_length_measure(doc, dim_group, 'DimZ', u'高度 (Z)', [
+        (post, _find_edges(post, outer_height, 'z')[0]),
+    ])
+
+    return dim_group
 
 
-def _create_dimension_line(doc, group, name, start, end, label_text):
-    """Create a dimension line with text label.
-    
-    Parameters
-    ----------
-    doc : FreeCAD document
-    group : App::DocumentObjectGroup
-        Dimension group
-    name : str
-        Object name
-    start : Base.Vector
-        Line start point
-    end : Base.Vector
-        Line end point
-    label_text : str
-        Label text
-    """
+def _find_edges(obj, target_len, axis):
+    """Find edge subelement names with the given length along an axis."""
+    names = []
+    for i, e in enumerate(obj.Shape.Edges, 1):
+        if abs(e.Length - target_len) < 1e-6:
+            d = e.Vertexes[-1].Point - e.Vertexes[0].Point
+            if abs(getattr(d, axis)) > 1e-6:
+                names.append('Edge%d' % i)
+    return names
+
+
+def _add_length_measure(doc, group, name, label, elements):
+    """Create a Measure::MeasureLength object bound to the given edges."""
     try:
-        # Create the dimension line
-        line = Part.makeLine(start, end)
-        line_obj = doc.addObject('Part::Feature', name)
-        line_obj.Shape = line
-        line_obj.Label = label_text
-        group.addObject(line_obj)
-        
-        # Create text label at midpoint
-        mid = Base.Vector((start.x + end.x) / 2, (start.y + end.y) / 2, (start.z + end.z) / 2)
-        # Add a small offset for text visibility
-        text_pos = Base.Vector(mid.x, mid.y, mid.z + 10)
-        
-        # Store dimension info as document property for reference
-        if not hasattr(doc, 'DimensionInfo'):
-            doc.addProperty('App::PropertyString', 'DimensionInfo', 'Frame', 'Dimension annotations')
-        doc.DimensionInfo = f"L={label_text} from ({start.x},{start.y},{start.z}) to ({end.x},{end.y},{end.z})"
-        
+        m = doc.addObject('Measure::MeasureLength', name)
+        m.Label = label
+        m.Elements = elements
+        doc.recompute()
+        group.addObject(m)
+        return m
     except Exception as e:
-        # Silently ignore errors to avoid breaking frame generation
-        pass
+        FreeCAD.Console.PrintWarning(
+            u'Measure annotation "%s" failed: %s\n' % (label, str(e)))
+        return None

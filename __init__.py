@@ -22,7 +22,7 @@ from .frame_builder import FrameBuilder
 from .config import PROFILES
 
 
-def make_frame(profile, length, width, height, material='Aluminum 6061', z_layers=1):
+def make_frame(profile, length, width, height, material='Aluminum 6061', z_layers=1, doc=None):
     """Build an aluminum frame - main entry point.
     
     Parameters
@@ -39,6 +39,9 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         Material label for BOM
     z_layers : int
         Number of Z horizontal layers
+    doc : FreeCAD document, optional
+        Target document for in-place update. If None a new document
+        is created.
         
     Returns
     -------
@@ -47,7 +50,7 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         List of beam metadata
     """
     builder = FrameBuilder()
-    return builder.build_frame(profile, length, width, height, material, z_layers)
+    return builder.build_frame(profile, length, width, height, material, z_layers, doc=doc)
 
 
 # Backward compatibility

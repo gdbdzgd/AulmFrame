@@ -1,62 +1,126 @@
 # -*- coding: utf-8 -*-
 """AlumFrame workbench GUI initialization.
 
-This workbench provides a complete task panel interface for generating
-aluminum extrusion frames with real-time preview.
+All commands live in the workbench toolbar — no menu bar entries.
 """
 
 import FreeCAD
 import FreeCADGui
 
+_ICON_FRAME = """/* XPM */
+static char * frame_xpm[] = {
+"16 16 2 1",
+"  c None",
+"# c #e0812f",
+"################",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"################"};
+"""
 
-class AlumFrameWorkbench(FreeCADGui.Workbench):
-    """Aluminum frame generator workbench."""
+_ICON_EDIT = """/* XPM */
+static char * edit_xpm[] = {
+"16 16 3 1",
+"  c None",
+"# c #e0812f",
+"o c #3584d4",
+"################",
+"#              #",
+"#     oooo     #",
+"#     oooo     #",
+"#     oooo     #",
+"#     oooo     #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"#              #",
+"################"};
+"""
 
-    def __init__(self):
-        self.__class__.Icon = ''
-        self.__class__.MenuText = u'铝型材框架'
-        self.__class__.ToolTip = u'快速生成铝型材框架并输出BOM'
 
-    def Initialize(self):
-        """Initialize the workbench - called when user switches to this workbench."""
-        # Import and show task panel immediately when workbench is activated
-        try:
-            from AlumFrame.Gui import AlumFrameTaskPanel
-            panel = AlumFrameTaskPanel()
-            FreeCADGui.Control.showDialog(panel)
-        except Exception as e:
-            FreeCAD.Console.PrintError(u'AlumFrame workbench init error: %s\n' % str(e))
-            import traceback
-            traceback.print_exc()
-
-    def GetClassName(self):
-        return 'Gui::PythonWorkbench'
+def _open_panel(edit_selected=False):
+    from AlumFrame.Gui import open_task_panel
+    open_task_panel(edit_selected=edit_selected)
 
 
-class AlumFrameGenerateCommand:
-    """Command to open/reopen the frame generator task panel."""
+class NewFrameCommand:
+    """Open the generator panel in new-frame mode."""
 
     def GetResources(self):
         return {
-            'Pixmap': '',
-            'MenuText': u'打开框架生成器',
-            'ToolTip': u'打开铝型材框架生成器任务面板',
+            'Pixmap': _ICON_FRAME,
+            'MenuText': u'新建框架',
+            'ToolTip': u'打开生成器，创建新的铝型材框架',
         }
 
     def Activated(self):
-        try:
-            from AlumFrame.Gui import AlumFrameTaskPanel
-            panel = AlumFrameTaskPanel()
-            FreeCADGui.Control.showDialog(panel)
-        except Exception as e:
-            FreeCAD.Console.PrintError(u'AlumFrame Activated error: %s\n' % str(e))
-            import traceback
-            traceback.print_exc()
+        _open_panel(edit_selected=False)
 
     def IsActive(self):
         return True
 
 
-FreeCADGui.addCommand('AlumFrame_OpenPanel', AlumFrameGenerateCommand())
+class EditFrameCommand:
+    """Open the generator panel loading the selected/current frame."""
+
+    def GetResources(self):
+        return {
+            'Pixmap': _ICON_EDIT,
+            'MenuText': u'编辑框架',
+            'ToolTip': u'读取选中（或当前文档）框架的参数并修改，就地重建',
+        }
+
+    def Activated(self):
+        _open_panel(edit_selected=True)
+
+    def IsActive(self):
+        return True
+
+
+class AlumFrameWorkbench(FreeCADGui.Workbench):
+    """Aluminum frame generator workbench — commands live in the toolbar."""
+
+    def __init__(self):
+        self.__class__.Icon = _ICON_FRAME
+        self.__class__.MenuText = u'铝型材框架'
+        self.__class__.ToolTip = u'快速生成/编辑铝型材框架并输出BOM'
+
+    def Initialize(self):
+        # Toolbar only — no menu bar entries
+        self.appendToolbar(u'铝型材框架', ['AlumFrame_NewFrame', 'AlumFrame_EditFrame'])
+
+    def Activated(self):
+        # Open the panel automatically for quick access
+        try:
+            _open_panel(edit_selected=True)
+        except Exception as e:
+            FreeCAD.Console.PrintError(u'AlumFrame workbench: %s\n' % str(e))
+
+    def Deactivated(self):
+        pass
+
+    def GetClassName(self):
+        return 'Gui::PythonWorkbench'
+
+
+FreeCADGui.addCommand('AlumFrame_NewFrame', NewFrameCommand())
+FreeCADGui.addCommand('AlumFrame_EditFrame', EditFrameCommand())
 FreeCADGui.addWorkbench(AlumFrameWorkbench())
 FreeCAD.Console.PrintMessage(u'AlumFrame workbench loaded\n')
