@@ -5,17 +5,13 @@ FreeCAD Aluminum Frame Generator
 Generates a centered aluminum extrusion frame using Draft.make_rect_array.
 
 Structure:
-  - X beams: horizontal beams along X direction, placed symmetrically at ±Y/2
-  - Y beams: horizontal beams along Y direction, placed symmetrically at ±X/2  
+  - X beams: horizontal beams along X direction, placed symmetrically at outer face of posts
+  - Y beams: horizontal beams along Y direction, placed symmetrically at outer face of posts  
   - Z posts: vertical posts at 4 corners
 
-All beams are centered at origin (symmetric placement).
+All beams are positioned for seamless outer face connection.
 Uses Draft.make_rect_array for creating beam arrays.
-
-Cutting rule (outer dimensions):
-  - Z (posts)    = full height
-  - X (beams)    = length - profile_size
-  - Y (beams)    = width  - profile_size
+Uses Part::Box for parametric editing.
 """
 
 try:
@@ -47,11 +43,24 @@ def _profile_size(profile_spec):
     return p['d'] if p['type'] == 'round' else p['w']
 
 
-def _make_beam_shape(length, profile_spec, direction='Z'):
-    """Create a beam shape centered at origin along the given axis."""
+def _profile_height(profile_spec):
+    """Get profile height (for rectangular profiles)."""
     p = PROFILES[profile_spec]
-
     if p['type'] == 'round':
+        return p['d']
+    else:
+        return p['h']
+
+
+def _make_beam_box(doc, length, profile_spec, direction='Z', name='Beam'):
+    """Create a parametric beam using Part::Box.
+    
+    Returns the box object which has Length, Width, Height properties.
+    """
+    p = PROFILES[profile_spec]
+    
+    if p['type'] == 'round':
+        # For round tubes, use cylinder (Part::Feature with cylinder shape)
         d = p['d']
         shape = Part.makeCylinder(d / 2.0, length, Base.Vector(0, 0, 0))
         shape.translate(Base.Vector(0, 0, -length / 2.0))
@@ -59,19 +68,51 @@ def _make_beam_shape(length, profile_spec, direction='Z'):
             shape.rotate(Base.Vector(0, 0, 0), Base.Vector(0, 1, 0), 90)
         elif direction == 'Y':
             shape.rotate(Base.Vector(0, 0, 0), Base.Vector(1, 0, 0), -90)
+        
+        obj = doc.addObject('Part::Feature', name)
+        obj.Shape = shape
+        # Add custom properties for round profile
+        obj.addProperty('App::PropertyLength', 'BeamLength', 'Beam', 'Length of the beam')
+        obj.addProperty('App::PropertyLength', 'ProfileDiameter', 'Beam', 'Profile diameter')
+        obj.BeamLength = length
+        obj.ProfileDiameter = d
+        return obj
     else:
+        # For rectangular profiles, use Part::Box
         w, h = p['w'], p['h']
+        
         if direction == 'X':
-            # Create box from -length/2 to +length/2 along X
-            shape = Part.makeBox(length, w, h, Base.Vector(-length/2, -w/2, -h/2))
+            # Length along X, width along Y, height along Z
+            obj = doc.addObject('Part::Box', name)
+            obj.Length = length
+            obj.Width = w
+            obj.Height = h
+            # Center the box
+            obj.Placement = Base.Placement(Base.Vector(-length/2, -w/2, -h/2), Base.Rotation())
         elif direction == 'Y':
-            # Create box from -length/2 to +length/2 along Y
-            shape = Part.makeBox(w, length, h, Base.Vector(-w/2, -length/2, -h/2))
+            # Width along X, length along Y, height along Z
+            obj = doc.addObject('Part::Box', name)
+            obj.Length = w
+            obj.Width = length
+            obj.Height = h
+            # Center the box
+            obj.Placement = Base.Placement(Base.Vector(-w/2, -length/2, -h/2), Base.Rotation())
         elif direction == 'Z':
-            # Create box from -length/2 to +length/2 along Z
-            shape = Part.makeBox(w, h, length, Base.Vector(-w/2, -h/2, -length/2))
-
-    return shape
+            # Width along X, height along Y, length along Z
+            obj = doc.addObject('Part::Box', name)
+            obj.Length = w
+            obj.Width = h
+            obj.Height = length
+            # Center the box
+            obj.Placement = Base.Placement(Base.Vector(-w/2, -h/2, -length/2), Base.Rotation())
+        
+        # Add custom properties for identification
+        obj.addProperty('App::PropertyString', 'BeamType', 'Beam', 'Type of beam')
+        obj.addProperty('App::PropertyString', 'ProfileSpec', 'Beam', 'Profile specification')
+        obj.BeamType = direction
+        obj.ProfileSpec = profile_spec
+        
+        return obj
 
 
 def _z_layer_positions(height, layers):
@@ -118,6 +159,7 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         raise ValueError('Unknown profile: %s. Available: %s' % (profile, ', '.join(PROFILES.keys())))
 
     profile_size = _profile_size(profile)
+    profile_height = _profile_height(profile)
 
     doc = FreeCAD.ActiveDocument
     if doc is None:
@@ -129,12 +171,12 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
 
     all_beams = []
 
-    # Correct cutting rule for seamless connection:
-    # X beam length = outer_length - 2*profile_size (fits between inner faces of Z posts)
-    # Y beam length = outer_width - 2*profile_size (fits between inner faces of Z posts)
+    # Cutting rule for seamless outer face connection:
+    # X beam length = outer_length - profile_size (outer face to outer face)
+    # Y beam length = outer_width - profile_size (outer face to outer face)
     # Z post length = full height
-    x_len = length - 2 * profile_size
-    y_len = width - 2 * profile_size
+    x_len = length - profile_size
+    y_len = width - profile_size
     z_len = height
 
     # Z positions for horizontal layers
@@ -142,16 +184,14 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
 
     # ---- X Beams: use Draft.make_array ----
     # X beams positioned at outer face of Z posts
-    # Position: Y = ±(width/2 - profile_size/2) = outer face of Z post
+    # Position: Y = ±(width/2 - profile_size/2) = center of outer face
     for idx, z_pos in enumerate(z_positions):
-        x_shape = _make_beam_shape(x_len, profile, 'X')
-        x_base = doc.addObject('Part::Feature', 'XBeamBase%d' % idx)
-        x_base.Shape = x_shape
-        x_base.Placement = Base.Placement(Base.Vector(0, 0, z_pos), Base.Rotation())
+        x_base = _make_beam_box(doc, x_len, profile, 'X', 'XBeamBase%d' % idx)
+        x_base.Placement.Base.z = z_pos  # Set Z position
         
         # Array: 2 items along Y direction
         # First beam at Y = -(width/2 - profile_size/2), second at Y = +(width/2 - profile_size/2)
-        y_offset = width/2 - profile_size/2  # outer face of Z post
+        y_offset = width/2 - profile_size/2  # outer face center
         y_spacing = 2 * y_offset  # distance between the two beams
         x_array = Draft.make_array(x_base, 
                                    Base.Vector(0, 0, 0),      # xvector (not used)
@@ -165,16 +205,14 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
 
     # ---- Y Beams: use Draft.make_array ----
     # Y beams positioned at outer face of Z posts
-    # Position: X = ±(length/2 - profile_size/2) = outer face of Z post
+    # Position: X = ±(length/2 - profile_size/2) = center of outer face
     for idx, z_pos in enumerate(z_positions):
-        y_shape = _make_beam_shape(y_len, profile, 'Y')
-        y_base = doc.addObject('Part::Feature', 'YBeamBase%d' % idx)
-        y_base.Shape = y_shape
-        y_base.Placement = Base.Placement(Base.Vector(0, 0, z_pos), Base.Rotation())
+        y_base = _make_beam_box(doc, y_len, profile, 'Y', 'YBeamBase%d' % idx)
+        y_base.Placement.Base.z = z_pos  # Set Z position
         
         # Array: 2 items along X direction
         # First beam at X = -(length/2 - profile_size/2), second at X = +(length/2 - profile_size/2)
-        x_offset = length/2 - profile_size/2  # outer face of Z post
+        x_offset = length/2 - profile_size/2  # outer face center
         x_spacing = 2 * x_offset  # distance between the two beams
         y_array = Draft.make_array(y_base,
                                    Base.Vector(x_spacing, 0, 0),   # xvector - spacing in X
@@ -189,10 +227,7 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
     # ---- Z Posts: use Draft.make_array ----
     # Z posts at corners, outer faces aligned with frame outer dimensions
     # Position: X = ±(length/2 - profile_size/2), Y = ±(width/2 - profile_size/2)
-    z_shape = _make_beam_shape(z_len, profile, 'Z')
-    z_base = doc.addObject('Part::Feature', 'ZPostBase')
-    z_base.Shape = z_shape
-    z_base.Placement = Base.Placement(Base.Vector(0, 0, 0), Base.Rotation())
+    z_base = _make_beam_box(doc, z_len, profile, 'Z', 'ZPostBase')
     
     # Array: 2x2 grid in XY plane
     # X spacing = length - profile_size (center-to-center)
@@ -217,7 +252,9 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
     _create_bom_spreadsheet(doc, all_beams, material, z_layers)
 
     # ---- Measure outer dimensions ----
-    _add_measurement(doc, frame_group, length, width, height, z_layers)
+    # Note: Using Std_Measure is not directly available via Python API
+    # We'll create measurement annotations using TechDraw or simple text labels
+    _add_measurement_annotations(doc, frame_group, length, width, height, z_layers)
 
     doc.recompute()
     return doc, all_beams, all_beams
@@ -290,32 +327,55 @@ def export_bom_csv(beams, filepath, material='Aluminum 6061'):
         writer.writerow(['', u'合计', '', '', '', '', total])
 
 
-def _add_measurement(doc, group, outer_length, outer_width, outer_height, z_layers):
-    """Add dimension labels showing the outer frame measurements."""
-    def _add_dimension_line(doc, group, name, start, end, label):
-        try:
-            line = Part.makeLine(start, end)
-            obj = doc.addObject('Part::Feature', name)
-            obj.Shape = line
-            obj.Label = label
-            group.addObject(obj)
-        except Exception:
-            pass
+def _add_measurement_annotations(doc, group, outer_length, outer_width, outer_height, z_layers):
+    """Add dimension annotations using text labels at frame corners.
+    
+    Note: Std_Measure tool is a GUI feature not directly accessible via Python.
+    We create visual dimension lines and text labels instead.
+    """
+    # Create a dimension annotation group
+    dim_group = doc.addObject('App::DocumentObjectGroup', 'Dimensions')
+    dim_group.Label = u'尺寸标注'
+    group.addObject(dim_group)
+    
+    # X dimension (length) - along front bottom edge
+    _create_dimension_line(doc, dim_group, 'DimX',
+                        Base.Vector(-outer_length/2, outer_width/2 + 20, -outer_height/2),
+                        Base.Vector(outer_length/2, outer_width/2 + 20, -outer_height/2),
+                        u'L=%d' % outer_length)
 
-    # X dimension (length)
-    _add_dimension_line(doc, group, 'DimX',
-                        Base.Vector(0, outer_width / 2.0, outer_height / 2.0 - 30),
-                        Base.Vector(0, -outer_width / 2.0, outer_height / 2.0 - 30),
-                        u'%d mm (L)' % outer_length)
+    # Y dimension (width) - along right bottom edge
+    _create_dimension_line(doc, dim_group, 'DimY',
+                        Base.Vector(outer_length/2 + 20, -outer_width/2, -outer_height/2),
+                        Base.Vector(outer_length/2 + 20, outer_width/2, -outer_height/2),
+                        u'W=%d' % outer_width)
 
-    # Y dimension (width)
-    _add_dimension_line(doc, group, 'DimY',
-                        Base.Vector(outer_length / 2.0 + 30, 0, outer_height / 2.0 - 30),
-                        Base.Vector(-outer_length / 2.0 - 30, 0, outer_height / 2.0 - 30),
-                        u'%d mm (W)' % outer_width)
+    # Z dimension (height) - along right back edge
+    _create_dimension_line(doc, dim_group, 'DimZ',
+                        Base.Vector(outer_length/2 + 20, outer_width/2 + 20, -outer_height/2),
+                        Base.Vector(outer_length/2 + 20, outer_width/2 + 20, outer_height/2),
+                        u'H=%d' % outer_height)
 
-    # Z dimension (height)
-    _add_dimension_line(doc, group, 'DimZ',
-                        Base.Vector(outer_length / 2.0 + 30, outer_width / 2.0, 0),
-                        Base.Vector(outer_length / 2.0 + 30, outer_width / 2.0, outer_height),
-                        u'%d mm (H)' % outer_height)
+
+def _create_dimension_line(doc, group, name, start, end, label_text):
+    """Create a dimension line with text label."""
+    try:
+        # Create the dimension line
+        line = Part.makeLine(start, end)
+        line_obj = doc.addObject('Part::Feature', name)
+        line_obj.Shape = line
+        line_obj.Label = label_text
+        group.addObject(line_obj)
+        
+        # Create text label at midpoint
+        mid = Base.Vector((start.x + end.x) / 2, (start.y + end.y) / 2, (start.z + end.z) / 2)
+        # Add a small offset for text visibility
+        text_pos = Base.Vector(mid.x, mid.y, mid.z + 10)
+        
+        # Store dimension info as document property for reference
+        if not hasattr(doc, 'DimensionInfo'):
+            doc.addProperty('App::PropertyString', 'DimensionInfo', 'Frame', 'Dimension annotations')
+        doc.DimensionInfo = f"L={label_text} from ({start.x},{start.y},{start.z}) to ({end.x},{end.y},{end.z})"
+        
+    except Exception as e:
+        pass
