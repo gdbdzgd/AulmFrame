@@ -95,16 +95,16 @@ def _make_beam_box(doc, length, profile_spec, direction='Z', name='Beam'):
             obj.Length = w
             obj.Width = length
             obj.Height = h
-            # Center the box
-            obj.Placement = Base.Placement(Base.Vector(-w/2, -length/2, -h/2), Base.Rotation())
+            # Center in XY, Z at 0
+            obj.Placement = Base.Placement(Base.Vector(-w/2, -length/2, 0), Base.Rotation())
         elif direction == 'Z':
             # Width along X, height along Y, length along Z
             obj = doc.addObject('Part::Box', name)
             obj.Length = w
             obj.Width = h
             obj.Height = length
-            # Center the box
-            obj.Placement = Base.Placement(Base.Vector(-w/2, -h/2, -length/2), Base.Rotation())
+            # Start from Z=0 (bottom), XY at origin (array will handle positioning)
+            obj.Placement = Base.Placement(Base.Vector(0, 0, 0), Base.Rotation())
         
         # Add custom properties for identification
         obj.addProperty('App::PropertyString', 'BeamType', 'Beam', 'Type of beam')
@@ -116,16 +116,16 @@ def _make_beam_box(doc, length, profile_spec, direction='Z', name='Beam'):
 
 
 def _z_layer_positions(height, layers):
-    """Compute Z positions for horizontal layers (symmetric around Z=0).
-      layers=1 -> 2 positions (top=+H/2, bottom=-H/2)
-      layers=2 -> 3 positions (top=+H/2, mid=0, bottom=-H/2)
-      layers=n -> n+1 evenly spaced positions
+    """Compute Z positions for horizontal layers (starting from Z=0).
+      layers=1 -> 2 positions (top=height, bottom=0)
+      layers=2 -> 3 positions (top=height, mid=height/2, bottom=0)
+      layers=n -> n+1 evenly spaced positions from bottom to top
     """
     if layers < 1:
         layers = 1
     positions = []
     for i in range(layers + 1):
-        z = height / 2.0 - float(i) * height / float(layers)
+        z = float(i) * height / float(layers)
         positions.append(z)
     return positions
 
@@ -182,70 +182,91 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
     # Z positions for horizontal layers
     z_positions = _z_layer_positions(height, z_layers)
 
-    # ---- X Beams: use Draft.make_array ----
-    # X beams span between inner faces of Z posts
-    # Position: Y = ±(width/2 - profile_size) = inner face of Z post
-    for idx, z_pos in enumerate(z_positions):
-        x_base = _make_beam_box(doc, x_len, profile, 'X', 'XBeamBase%d' % idx)
-        x_base.Placement.Base.z = z_pos  # Set Z position
+    # ---- Create First Layer (Z=0) ----
+    # First layer contains X beams and Y beams at Z=0
+    # Other layers will be created by arraying this layer in Z direction
+    
+    # Create X beams for first layer
+    x_base = _make_beam_box(doc, x_len, profile, 'X', 'XBeamBase')
+    x_base.Placement.Base.z = 0
+    
+    # Array: 2 items along Y direction with spacing = width - profile_size
+    y_spacing = width - profile_size
+    x_array = Draft.make_array(x_base, 
+                               Base.Vector(0, 0, 0),      # xvector (not used)
+                               Base.Vector(0, y_spacing, 0), # yvector - spacing between inner faces
+                               1, 2)                        # xnum=1, ynum=2
+    x_array.Label = u'X-横梁'
+    # First beam Y = -width/2 + profile_size/2 (aligned with Z post inner face)
+    y_start = -width/2 + profile_size/2
+    x_array.Placement = Base.Placement(Base.Vector(0, y_start, 0), Base.Rotation())
+    frame_group.addObject(x_array)
+    
+    # Create Y beams for first layer
+    y_base = _make_beam_box(doc, y_len, profile, 'Y', 'YBeamBase')
+    
+    # Array: 2 items along X direction with spacing = length - profile_size
+    x_spacing = length - profile_size
+    y_array = Draft.make_array(y_base,
+                               Base.Vector(x_spacing, 0, 0),   # xvector - spacing between inner faces
+                               Base.Vector(0, 0, 0),           # yvector (not used)
+                               2, 1)                           # xnum=2, ynum=1
+    y_array.Label = u'Y-纵梁'
+    # First beam X = -length/2 + profile_size/2 (aligned with Z post inner face)
+    x_start = -length/2 + profile_size/2
+    y_array.Placement = Base.Placement(Base.Vector(x_start, 0, 0), Base.Rotation())
+    frame_group.addObject(y_array)
+    
+    # ---- Create Compound from X and Y arrays ----
+    # Use Part::Compound to combine X and Y beams (better than group for array operations)
+    layer_compound = doc.addObject('Part::Compound', 'LayerCompound')
+    layer_compound.Label = u'水平层复合体'
+    layer_compound.Links = [x_array, y_array]
+    frame_group.addObject(layer_compound)
+    
+    # ---- Array layers in Z direction ----
+    # Array the compound in Z direction for multiple layers
+    if z_layers >= 1:
+        z_positions = _z_layer_positions(height, z_layers)
+        z_spacing = z_positions[1] - z_positions[0] if len(z_positions) > 1 else height
         
-        # Array: 2 items along Y direction
-        # First beam at Y = -(width/2 - profile_size), second at Y = +(width/2 - profile_size)
-        y_offset = width/2 - profile_size  # inner face
-        y_spacing = 2 * y_offset  # distance between the two beams
-        x_array = Draft.make_array(x_base, 
-                                   Base.Vector(0, 0, 0),      # xvector (not used)
-                                   Base.Vector(0, y_spacing, 0), # yvector - spacing in Y
-                                   1, 2)                        # xnum=1, ynum=2
-        x_array.Label = u'X-横梁-层%d' % (idx + 1)
-        x_array.Placement = Base.Placement(Base.Vector(0, -y_offset, 0), Base.Rotation())
-        frame_group.addObject(x_array)
-        
-        all_beams.append({'part': u'X-横梁', 'profile': profile, 'length': x_len, 'qty': 2, 'z': z_pos})
-
-    # ---- Y Beams: use Draft.make_array ----
-    # Y beams span between inner faces of Z posts
-    # Position: X = ±(length/2 - profile_size) = inner face of Z post
-    for idx, z_pos in enumerate(z_positions):
-        y_base = _make_beam_box(doc, y_len, profile, 'Y', 'YBeamBase%d' % idx)
-        y_base.Placement.Base.z = z_pos  # Set Z position
-        
-        # Array: 2 items along X direction
-        # First beam at X = -(length/2 - profile_size), second at X = +(length/2 - profile_size)
-        x_offset = length/2 - profile_size  # inner face
-        x_spacing = 2 * x_offset  # distance between the two beams
-        y_array = Draft.make_array(y_base,
-                                   Base.Vector(x_spacing, 0, 0),   # xvector - spacing in X
-                                   Base.Vector(0, 0, 0),           # yvector (not used)
-                                   2, 1)                           # xnum=2, ynum=1
-        y_array.Label = u'Y-纵梁-层%d' % (idx + 1)
-        y_array.Placement = Base.Placement(Base.Vector(-x_offset, 0, 0), Base.Rotation())
-        frame_group.addObject(y_array)
-        
-        all_beams.append({'part': u'Y-纵梁', 'profile': profile, 'length': y_len, 'qty': 2, 'z': z_pos})
-
-    # ---- Z Posts: use Draft.make_array ----
-    # Z posts at corners, outer faces aligned with frame outer dimensions
-    # Position: X = ±(length/2 - profile_size/2), Y = ±(width/2 - profile_size/2)
+        layer_array = Draft.make_array(layer_compound,
+                                       Base.Vector(0, 0, 0),           # xvector (not used)
+                                       Base.Vector(0, 0, 0),           # yvector (not used)
+                                       1, 1)                           # xnum=1, ynum=1
+        layer_array.Label = u'水平层阵列'
+        # Use IntervalZ for Z spacing
+        layer_array.IntervalZ = Base.Vector(0, 0, z_spacing)
+        layer_array.NumberZ = len(z_positions)
+        layer_array.Placement = Base.Placement(Base.Vector(0, 0, 0), Base.Rotation())
+        frame_group.addObject(layer_array)
+    
+    # ---- Z Posts ----
+    # Z posts at corners
+    # Base position: (-20 - (length-profile_size)/2, -20 - (width-profile_size)/2, 0)
+    # For 600x400 frame with 40x40 profile: (-300, -200, 0)
     z_base = _make_beam_box(doc, z_len, profile, 'Z', 'ZPostBase')
     
-    # Array: 2x2 grid in XY plane
-    # X spacing = length - profile_size (center-to-center)
-    # Y spacing = width - profile_size (center-to-center)
-    x_spacing = length - profile_size
-    y_spacing = width - profile_size
+    # Array: 2x2 grid in XY plane with spacing = outer dimensions - profile_size
     z_array = Draft.make_array(z_base,
-                               Base.Vector(x_spacing, 0, 0),       # xvector
-                               Base.Vector(0, y_spacing, 0),         # yvector
+                               Base.Vector(length - profile_size, 0, 0),       # xvector = length - profile_size
+                               Base.Vector(0, width - profile_size, 0),         # yvector = width - profile_size
                                2, 2)                                 # xnum, ynum
     z_array.Label = u'Z-立柱'
-    # First post at (-(length/2 - profile_size/2), -(width/2 - profile_size/2))
-    z_array.Placement = Base.Placement(
-        Base.Vector(-(length/2 - profile_size/2), -(width/2 - profile_size/2), 0), 
-        Base.Rotation()
-    )
     frame_group.addObject(z_array)
     
+    # Set placement after adding to group
+    # First post at (-20 - (length-profile_size)/2, -20 - (width-profile_size)/2)
+    z_array.Placement = Base.Placement(
+        Base.Vector(-profile_size/2 - (length - profile_size)/2, -profile_size/2 - (width - profile_size)/2, 0), 
+        Base.Rotation()
+    )
+    
+    # Build BOM
+    all_beams = []
+    for z_pos in z_positions:
+        all_beams.append({'part': u'X-横梁', 'profile': profile, 'length': x_len, 'qty': 2, 'z': z_pos})
+        all_beams.append({'part': u'Y-纵梁', 'profile': profile, 'length': y_len, 'qty': 2, 'z': z_pos})
     all_beams.append({'part': u'Z-立柱', 'profile': profile, 'length': z_len, 'qty': 4, 'z': 0.0})
 
     # ---- BOM Spreadsheet ----
@@ -338,22 +359,22 @@ def _add_measurement_annotations(doc, group, outer_length, outer_width, outer_he
     dim_group.Label = u'尺寸标注'
     group.addObject(dim_group)
     
-    # X dimension (length) - along front bottom edge
+    # X dimension (length) - along front bottom edge at Z=0
     _create_dimension_line(doc, dim_group, 'DimX',
-                        Base.Vector(-outer_length/2, outer_width/2 + 20, -outer_height/2),
-                        Base.Vector(outer_length/2, outer_width/2 + 20, -outer_height/2),
+                        Base.Vector(-outer_length/2, outer_width/2 + 20, 0),
+                        Base.Vector(outer_length/2, outer_width/2 + 20, 0),
                         u'L=%d' % outer_length)
 
-    # Y dimension (width) - along right bottom edge
+    # Y dimension (width) - along right bottom edge at Z=0
     _create_dimension_line(doc, dim_group, 'DimY',
-                        Base.Vector(outer_length/2 + 20, -outer_width/2, -outer_height/2),
-                        Base.Vector(outer_length/2 + 20, outer_width/2, -outer_height/2),
+                        Base.Vector(outer_length/2 + 20, -outer_width/2, 0),
+                        Base.Vector(outer_length/2 + 20, outer_width/2, 0),
                         u'W=%d' % outer_width)
 
-    # Z dimension (height) - along right back edge
+    # Z dimension (height) - along right back edge at X/Y offset
     _create_dimension_line(doc, dim_group, 'DimZ',
-                        Base.Vector(outer_length/2 + 20, outer_width/2 + 20, -outer_height/2),
-                        Base.Vector(outer_length/2 + 20, outer_width/2 + 20, outer_height/2),
+                        Base.Vector(outer_length/2 + 20, outer_width/2 + 20, 0),
+                        Base.Vector(outer_length/2 + 20, outer_width/2 + 20, outer_height),
                         u'H=%d' % outer_height)
 
 
