@@ -148,15 +148,17 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         x_base.Shape = x_shape
         x_base.Placement = Base.Placement(Base.Vector(0, 0, z_pos), Base.Rotation())
         
-        # Array: 2 items along Y, spaced by 2*(width/2 - profile_size)
-        y_spacing = width - 2 * profile_size  # distance between inner faces
-        x_array = Draft.make_array(x_base, 
-                                   Base.Vector(0, y_spacing, 0),  # xvector
-                                   Base.Vector(0, 0, 0),         # yvector (not used)
-                                   2, 1)                           # xnum, ynum
-        x_array.Label = u'X-横梁-层%d' % (idx + 1)
+        # Array: 2 items along Y direction
         # First beam at Y = -(width/2 - profile_size), second at Y = +(width/2 - profile_size)
-        x_array.Placement = Base.Placement(Base.Vector(0, -(width/2 - profile_size), 0), Base.Rotation())
+        y_offset = width/2 - profile_size
+        y_spacing = 2 * y_offset  # distance between the two beams
+        # Use yvector for Y direction spacing, xnum=1, ynum=2
+        x_array = Draft.make_array(x_base, 
+                                   Base.Vector(0, 0, 0),      # xvector (not used)
+                                   Base.Vector(0, y_spacing, 0), # yvector - spacing in Y
+                                   1, 2)                        # xnum=1, ynum=2
+        x_array.Label = u'X-横梁-层%d' % (idx + 1)
+        x_array.Placement = Base.Placement(Base.Vector(0, -y_offset, 0), Base.Rotation())
         frame_group.addObject(x_array)
         
         all_beams.append({'part': u'X-横梁', 'profile': profile, 'length': x_len, 'qty': 2, 'z': z_pos})
@@ -170,15 +172,16 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         y_base.Shape = y_shape
         y_base.Placement = Base.Placement(Base.Vector(0, 0, z_pos), Base.Rotation())
         
-        # Array: 2 items along X, spaced by 2*(length/2 - profile_size)
-        x_spacing = length - 2 * profile_size  # distance between inner faces
-        y_array = Draft.make_array(y_base,
-                                   Base.Vector(x_spacing, 0, 0),   # xvector
-                                   Base.Vector(0, 0, 0),           # yvector (not used)
-                                   2, 1)                           # xnum, ynum
-        y_array.Label = u'Y-纵梁-层%d' % (idx + 1)
+        # Array: 2 items along X direction
         # First beam at X = -(length/2 - profile_size), second at X = +(length/2 - profile_size)
-        y_array.Placement = Base.Placement(Base.Vector(-(length/2 - profile_size), 0, 0), Base.Rotation())
+        x_offset = length/2 - profile_size
+        x_spacing = 2 * x_offset  # distance between the two beams
+        y_array = Draft.make_array(y_base,
+                                   Base.Vector(x_spacing, 0, 0),   # xvector - spacing in X
+                                   Base.Vector(0, 0, 0),           # yvector (not used)
+                                   2, 1)                           # xnum=2, ynum=1
+        y_array.Label = u'Y-纵梁-层%d' % (idx + 1)
+        y_array.Placement = Base.Placement(Base.Vector(-x_offset, 0, 0), Base.Rotation())
         frame_group.addObject(y_array)
         
         all_beams.append({'part': u'Y-纵梁', 'profile': profile, 'length': y_len, 'qty': 2, 'z': z_pos})
