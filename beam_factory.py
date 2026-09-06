@@ -58,25 +58,35 @@ class BeamFactory:
             return self._create_rect_beam(length, p, direction, name, profile_spec)
     
     def _create_round_beam(self, length, profile, direction, name, profile_spec):
-        """Create a round tube beam."""
+        """Create a round tube beam (Part::Feature with cylinder shape).
+
+        Local coordinate conventions match the rectangular beams:
+        - Z: base corner at origin, spans 0..length (axis at d/2, d/2)
+        - X/Y: centered on the beam axis, Z from 0..d
+        """
         d = profile['d']
         shape = Part.makeCylinder(d / 2.0, length, Base.Vector(0, 0, 0))
-        shape.translate(Base.Vector(0, 0, -length / 2.0))
-        
-        if direction == 'X':
+
+        if direction == 'Z':
+            shape.translate(Base.Vector(d / 2.0, d / 2.0, 0))
+        elif direction == 'X':
+            shape.translate(Base.Vector(0, 0, -length / 2.0))
             shape.rotate(Base.Vector(0, 0, 0), Base.Vector(0, 1, 0), 90)
+            shape.translate(Base.Vector(0, 0, d / 2.0))
         elif direction == 'Y':
+            shape.translate(Base.Vector(0, 0, -length / 2.0))
             shape.rotate(Base.Vector(0, 0, 0), Base.Vector(1, 0, 0), -90)
-        
+            shape.translate(Base.Vector(0, 0, d / 2.0))
+
         obj = self.doc.addObject('Part::Feature', name)
         obj.Shape = shape
-        
-        # Add custom properties
-        obj.addProperty('App::PropertyLength', 'BeamLength', 'Beam', 'Length of the beam')
-        obj.addProperty('App::PropertyLength', 'ProfileDiameter', 'Beam', 'Profile diameter')
-        obj.BeamLength = length
-        obj.ProfileDiameter = d
-        
+
+        # Custom properties (same as rectangular beams, required by BOM/metadata)
+        obj.addProperty('App::PropertyString', 'BeamType', 'Beam', 'Type of beam')
+        obj.addProperty('App::PropertyString', 'ProfileSpec', 'Beam', 'Profile specification')
+        obj.BeamType = direction
+        obj.ProfileSpec = profile_spec
+
         return obj
     
     def _create_rect_beam(self, length, profile, direction, name, profile_spec):

@@ -13,7 +13,7 @@ except ImportError:
     Base = None
     Draft = None
 
-from .config import PROFILES, DEFAULTS
+from .config import PROFILES
 from .position_calculator import FramePositionCalculator
 from .beam_factory import BeamFactory
 
@@ -98,6 +98,23 @@ class FrameBuilder:
         # Create position calculator
         calc = FramePositionCalculator(length, width, height, profile_size)
         
+        # Draft.make_array creates objects in the ACTIVE document, so the
+        # target document must be active during the build; restore after.
+        prev_active = FreeCAD.ActiveDocument
+        FreeCAD.setActiveDocument(doc.Name)
+        try:
+            self._build_into_doc(doc, calc, profile, profile_size,
+                                 length, width, height, material, z_layers)
+        finally:
+            if prev_active is not None:
+                FreeCAD.setActiveDocument(prev_active.Name)
+        
+        self.doc.recompute()
+        return self.doc, self.all_beams
+    
+    def _build_into_doc(self, doc, calc, profile, profile_size,
+                        length, width, height, material, z_layers):
+        """Create all frame objects in doc (doc must be the active document)."""
         # Create main frame group
         frame_group = doc.addObject('App::DocumentObjectGroup', 'Frame')
         frame_group.Label = u'Frame'
@@ -119,9 +136,6 @@ class FrameBuilder:
         
         # ========== Create Measurements ==========
         self._create_measurements(frame_group, length, width, height, z_layers, profile_size)
-        
-        self.doc.recompute()
-        return self.doc, self.all_beams
     
     # ========== Parameter storage / frame lookup ==========
     def _store_params(self, group, profile, length, width, height, material, z_layers):

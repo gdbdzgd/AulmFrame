@@ -47,24 +47,34 @@ def add_measurement_annotations(doc, group, outer_length, outer_width,
 
     # Length (X) = profile + (L - 2*profile) + profile
     _add_length_measure(doc, dim_group, 'DimX', u'长度 (X)', [
-        (post, _find_edges(post, profile_size, 'x')[0]),
-        (x_base, _find_edges(x_base, outer_length - 2 * profile_size, 'x')[0]),
-        (post, _find_edges(post, profile_size, 'x')[1]),
+        (post, profile_size, 'x'),
+        (x_base, outer_length - 2 * profile_size, 'x'),
+        (post, profile_size, 'x'),
     ])
 
     # Width (Y) = profile + (W - 2*profile) + profile
     _add_length_measure(doc, dim_group, 'DimY', u'宽度 (Y)', [
-        (post, _find_edges(post, profile_size, 'y')[0]),
-        (y_base, _find_edges(y_base, outer_width - 2 * profile_size, 'y')[0]),
-        (post, _find_edges(post, profile_size, 'y')[1]),
+        (post, profile_size, 'y'),
+        (y_base, outer_width - 2 * profile_size, 'y'),
+        (post, profile_size, 'y'),
     ])
 
     # Height (Z) - single vertical post edge
     _add_length_measure(doc, dim_group, 'DimZ', u'高度 (Z)', [
-        (post, _find_edges(post, outer_height, 'z')[0]),
+        (post, outer_height, 'z'),
     ])
 
     return dim_group
+
+
+def _pick_edge(obj, target_len, axis, used):
+    """Pick an edge of the given length/axis, avoiding already-used ones."""
+    names = _find_edges(obj, target_len, axis)
+    for n in names:
+        if (obj.Name, n) not in used:
+            used.add((obj.Name, n))
+            return n
+    return names[0] if names else None
 
 
 def _find_edges(obj, target_len, axis):
@@ -78,8 +88,22 @@ def _find_edges(obj, target_len, axis):
     return names
 
 
-def _add_length_measure(doc, group, name, label, elements):
-    """Create a Measure::MeasureLength object bound to the given edges."""
+def _add_length_measure(doc, group, name, label, chain):
+    """Create a Measure::MeasureLength bound to a chain of edges.
+
+    chain: [(obj, target_length, axis), ...]. Skips gracefully when an
+    edge cannot be found (e.g. round posts have no axial short edges).
+    """
+    used = set()
+    elements = []
+    for obj, tlen, axis in chain:
+        edge = _pick_edge(obj, tlen, axis, used)
+        if edge is None:
+            FreeCAD.Console.PrintWarning(
+                u'Measure "%s" skipped: no %s-edge of length %.1f on %s\n'
+                % (label, axis, tlen, obj.Name))
+            return None
+        elements.append((obj, edge))
     try:
         m = doc.addObject('Measure::MeasureLength', name)
         m.Label = label
