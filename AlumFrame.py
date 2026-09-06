@@ -141,8 +141,8 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
     z_positions = _z_layer_positions(height, z_layers)
 
     # ---- X Beams: use Draft.make_array ----
-    # X beams span between inner faces of Z posts
-    # Position: Y = ±(width/2 - profile_size) = inner face of Z post
+    # X beams positioned at outer face of Z posts
+    # Position: Y = ±(width/2 - profile_size/2) = outer face of Z post
     for idx, z_pos in enumerate(z_positions):
         x_shape = _make_beam_shape(x_len, profile, 'X')
         x_base = doc.addObject('Part::Feature', 'XBeamBase%d' % idx)
@@ -150,10 +150,9 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         x_base.Placement = Base.Placement(Base.Vector(0, 0, z_pos), Base.Rotation())
         
         # Array: 2 items along Y direction
-        # First beam at Y = -(width/2 - profile_size), second at Y = +(width/2 - profile_size)
-        y_offset = width/2 - profile_size
+        # First beam at Y = -(width/2 - profile_size/2), second at Y = +(width/2 - profile_size/2)
+        y_offset = width/2 - profile_size/2  # outer face of Z post
         y_spacing = 2 * y_offset  # distance between the two beams
-        # Use yvector for Y direction spacing, xnum=1, ynum=2
         x_array = Draft.make_array(x_base, 
                                    Base.Vector(0, 0, 0),      # xvector (not used)
                                    Base.Vector(0, y_spacing, 0), # yvector - spacing in Y
@@ -165,8 +164,8 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         all_beams.append({'part': u'X-横梁', 'profile': profile, 'length': x_len, 'qty': 2, 'z': z_pos})
 
     # ---- Y Beams: use Draft.make_array ----
-    # Y beams span between inner faces of Z posts
-    # Position: X = ±(length/2 - profile_size) = inner face of Z post
+    # Y beams positioned at outer face of Z posts
+    # Position: X = ±(length/2 - profile_size/2) = outer face of Z post
     for idx, z_pos in enumerate(z_positions):
         y_shape = _make_beam_shape(y_len, profile, 'Y')
         y_base = doc.addObject('Part::Feature', 'YBeamBase%d' % idx)
@@ -174,8 +173,8 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         y_base.Placement = Base.Placement(Base.Vector(0, 0, z_pos), Base.Rotation())
         
         # Array: 2 items along X direction
-        # First beam at X = -(length/2 - profile_size), second at X = +(length/2 - profile_size)
-        x_offset = length/2 - profile_size
+        # First beam at X = -(length/2 - profile_size/2), second at X = +(length/2 - profile_size/2)
+        x_offset = length/2 - profile_size/2  # outer face of Z post
         x_spacing = 2 * x_offset  # distance between the two beams
         y_array = Draft.make_array(y_base,
                                    Base.Vector(x_spacing, 0, 0),   # xvector - spacing in X
