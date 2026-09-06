@@ -62,13 +62,14 @@ def _make_beam_shape(length, profile_spec, direction='Z'):
     else:
         w, h = p['w'], p['h']
         if direction == 'X':
-            shape = Part.makeBox(length, w, h)
+            # Create box from -length/2 to +length/2 along X
+            shape = Part.makeBox(length, w, h, Base.Vector(-length/2, -w/2, -h/2))
         elif direction == 'Y':
-            shape = Part.makeBox(w, length, h)
+            # Create box from -length/2 to +length/2 along Y
+            shape = Part.makeBox(w, length, h, Base.Vector(-w/2, -length/2, -h/2))
         elif direction == 'Z':
-            shape = Part.makeBox(w, h, length)
-        bb = shape.BoundBox
-        shape.translate(Base.Vector(-bb.XLength / 2.0, -bb.YLength / 2.0, -bb.ZLength / 2.0))
+            # Create box from -length/2 to +length/2 along Z
+            shape = Part.makeBox(w, h, length, Base.Vector(-w/2, -h/2, -length/2))
 
     return shape
 
