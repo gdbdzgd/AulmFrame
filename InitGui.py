@@ -33,7 +33,6 @@ class AlumFrameGenerateCommand:
 
     def Activated(self):
         try:
-            import AlumFrame
             from AlumFrame.Gui import AlumFrameDialog
             dlg = AlumFrameDialog()
             dlg.exec()
