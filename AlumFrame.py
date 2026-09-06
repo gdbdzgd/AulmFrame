@@ -171,27 +171,27 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
 
     all_beams = []
 
-    # Cutting rule for seamless outer face connection:
-    # X beam length = outer_length - profile_size (outer face to outer face)
-    # Y beam length = outer_width - profile_size (outer face to outer face)
+    # Cutting rule for seamless connection:
+    # X beam length = outer_length - 2*profile_size (fits between inner faces of Z posts)
+    # Y beam length = outer_width - 2*profile_size (fits between inner faces of Z posts)
     # Z post length = full height
-    x_len = length - profile_size
-    y_len = width - profile_size
+    x_len = length - 2 * profile_size
+    y_len = width - 2 * profile_size
     z_len = height
 
     # Z positions for horizontal layers
     z_positions = _z_layer_positions(height, z_layers)
 
     # ---- X Beams: use Draft.make_array ----
-    # X beams positioned at outer face of Z posts
-    # Position: Y = ±(width/2 - profile_size/2) = center of outer face
+    # X beams span between inner faces of Z posts
+    # Position: Y = ±(width/2 - profile_size) = inner face of Z post
     for idx, z_pos in enumerate(z_positions):
         x_base = _make_beam_box(doc, x_len, profile, 'X', 'XBeamBase%d' % idx)
         x_base.Placement.Base.z = z_pos  # Set Z position
         
         # Array: 2 items along Y direction
-        # First beam at Y = -(width/2 - profile_size/2), second at Y = +(width/2 - profile_size/2)
-        y_offset = width/2 - profile_size/2  # outer face center
+        # First beam at Y = -(width/2 - profile_size), second at Y = +(width/2 - profile_size)
+        y_offset = width/2 - profile_size  # inner face
         y_spacing = 2 * y_offset  # distance between the two beams
         x_array = Draft.make_array(x_base, 
                                    Base.Vector(0, 0, 0),      # xvector (not used)
@@ -204,15 +204,15 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         all_beams.append({'part': u'X-横梁', 'profile': profile, 'length': x_len, 'qty': 2, 'z': z_pos})
 
     # ---- Y Beams: use Draft.make_array ----
-    # Y beams positioned at outer face of Z posts
-    # Position: X = ±(length/2 - profile_size/2) = center of outer face
+    # Y beams span between inner faces of Z posts
+    # Position: X = ±(length/2 - profile_size) = inner face of Z post
     for idx, z_pos in enumerate(z_positions):
         y_base = _make_beam_box(doc, y_len, profile, 'Y', 'YBeamBase%d' % idx)
         y_base.Placement.Base.z = z_pos  # Set Z position
         
         # Array: 2 items along X direction
-        # First beam at X = -(length/2 - profile_size/2), second at X = +(length/2 - profile_size/2)
-        x_offset = length/2 - profile_size/2  # outer face center
+        # First beam at X = -(length/2 - profile_size), second at X = +(length/2 - profile_size)
+        x_offset = length/2 - profile_size  # inner face
         x_spacing = 2 * x_offset  # distance between the two beams
         y_array = Draft.make_array(y_base,
                                    Base.Vector(x_spacing, 0, 0),   # xvector - spacing in X
