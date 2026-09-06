@@ -63,7 +63,9 @@ class AlumFrameTaskPanel:
 
         self.profile_combo = QtWidgets.QComboBox()
         for k in sorted(PROFILES.keys()):
-            self.profile_combo.addItem(k)
+            # Round profiles are not supported yet - only offer square/rect
+            if PROFILES[k]['type'] != 'round':
+                self.profile_combo.addItem(k)
         idx = self.profile_combo.findText(u'40x40 方管')
         if idx >= 0:
             self.profile_combo.setCurrentIndex(idx)
