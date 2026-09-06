@@ -1,30 +1,32 @@
 # -*- coding: utf-8 -*-
 """
 FreeCAD Aluminum Frame Generator
-===============================
+================================
 Generates a centered aluminum extrusion frame using Draft.make_rect_array.
 
-Structure (每层 = 4Z + 2X + 2Y = 8根)：
-  1. X 梁：沿 X 方向，位置由 Draft.make_rect_array 生成
-  2. Y 梁：沿 Y 方向，位置由 Draft.make_rect_array 生成
-  3. Z 柱：4 根位于框架角点
-  4. 上下 Z 位置通过 Draft.make_rect_array 沿 Z 方向阵列
+Structure:
+  - X beams: horizontal beams along X direction, placed symmetrically at ±Y/2
+  - Y beams: horizontal beams along Y direction, placed symmetrically at ±X/2  
+  - Z posts: vertical posts at 4 corners
 
-Cutting rule (outer dimensions)：
-  - Z (立柱) = full height
-  - X (横梁) = length - profile_size
-  - Y (纵梁) = width  - profile_size
+All beams are centered at origin (symmetric placement).
+Uses Draft.make_rect_array for creating beam arrays.
 
-Uses Draft.make_rect_array for X/Y beam arrays, and Part::Feature with Placement for Z posts.
+Cutting rule (outer dimensions):
+  - Z (posts)    = full height
+  - X (beams)    = length - profile_size
+  - Y (beams)    = width  - profile_size
 """
 
 try:
     import FreeCAD
     from FreeCAD import Base, Part
+    import Draft
 except ImportError:
     FreeCAD = None
     Base = None
     Part = None
+    Draft = None
 
 
 PROFILES = {
@@ -51,7 +53,6 @@ def _make_beam_shape(length, profile_spec, direction='Z'):
 
     if p['type'] == 'round':
         d = p['d']
-        # Cylinder created along Z, rotate to desired axis
         shape = Part.makeCylinder(d / 2.0, length, Base.Vector(0, 0, 0))
         shape.translate(Base.Vector(0, 0, -length / 2.0))
         if direction == 'X':
@@ -60,14 +61,12 @@ def _make_beam_shape(length, profile_spec, direction='Z'):
             shape.rotate(Base.Vector(0, 0, 0), Base.Vector(1, 0, 0), -90)
     else:
         w, h = p['w'], p['h']
-        # Create box with length along the desired axis directly
         if direction == 'X':
             shape = Part.makeBox(length, w, h)
         elif direction == 'Y':
             shape = Part.makeBox(w, length, h)
         elif direction == 'Z':
             shape = Part.makeBox(w, h, length)
-        # Center at origin
         bb = shape.BoundBox
         shape.translate(Base.Vector(-bb.XLength / 2.0, -bb.YLength / 2.0, -bb.ZLength / 2.0))
 
@@ -75,10 +74,10 @@ def _make_beam_shape(length, profile_spec, direction='Z'):
 
 
 def _z_layer_positions(height, layers):
-    """Compute Z positions for horizontal layers.
-      layers=1 -> 2 positions (top=600, bottom=-600)
-      layers=2 -> 3 positions (top=600, mid=0, bottom=-600)
-      layers=n -> n+1 evenly spaced positions (top to bottom)
+    """Compute Z positions for horizontal layers (symmetric around Z=0).
+      layers=1 -> 2 positions (top=+H/2, bottom=-H/2)
+      layers=2 -> 3 positions (top=+H/2, mid=0, bottom=-H/2)
+      layers=n -> n+1 evenly spaced positions
     """
     if layers < 1:
         layers = 1
@@ -91,7 +90,7 @@ def _z_layer_positions(height, layers):
 
 def make_frame(profile, length, width, height, material='Aluminum 6061', z_layers=1):
     """
-    Build a centered aluminum frame.
+    Build a centered aluminum frame using Draft.make_rect_array.
 
     Parameters
     ----------
@@ -111,6 +110,9 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
     if FreeCAD is None:
         raise RuntimeError('FreeCAD is not available')
 
+    if Draft is None:
+        raise RuntimeError('Draft module is not available')
+
     if profile not in PROFILES:
         raise ValueError('Unknown profile: %s. Available: %s' % (profile, ', '.join(PROFILES.keys())))
 
@@ -127,9 +129,6 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
     all_beams = []
 
     # Cutting rule (outer dimensions):
-    #   Z立柱 = full height
-    #   X横梁 = length - profile_size
-    #   Y纵梁 = width  - profile_size
     x_len = length - profile_size
     y_len = width - profile_size
     z_len = height
@@ -137,47 +136,58 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
     # Z positions for horizontal layers
     z_positions = _z_layer_positions(height, z_layers)
 
-    # ---- Build each layer using Draft.make_rect_array ----
+    # ---- X Beams: use Draft.make_rect_array ----
+    # Create one X beam at origin, then array to ±Y/2 positions
     for idx, z_pos in enumerate(z_positions):
-        # 1. Create X beam shapes (along X, at given Z position) — 2 beams at ±y/2
-        for y_sign in [1, -1]:
-            x_shape = _make_beam_shape(x_len, profile, 'X')
-            x_shape.Placement = Base.Placement(
-                Base.Vector(0, y_sign * y_len / 2.0, z_pos),
-                Base.Rotation()
-            )
-            x_beam = doc.addObject('Part::Feature', 'XBeam%d' % (idx + 1))
-            x_beam.Shape = x_shape
-            x_beam.Label = u'X-横梁'
-            frame_group.addObject(x_beam)
-            all_beams.append({'part': u'X-横梁', 'profile': profile, 'length': x_len, 'qty': 1, 'z': z_pos})
+        # Create base X beam at origin, Z=z_pos
+        x_shape = _make_beam_shape(x_len, profile, 'X')
+        x_base = doc.addObject('Part::Feature', 'XBeamBase%d' % idx)
+        x_base.Shape = x_shape
+        x_base.Placement = Base.Placement(Base.Vector(0, 0, z_pos), Base.Rotation())
+        
+        # Array: 2 items along Y, spaced by y_len (centered at origin)
+        # First at -y_len/2, second at +y_len/2
+        x_array = Draft.make_rect_array(x_base, xvector=Base.Vector(0, y_len, 0), 
+                                         xnum=2, ynum=1, znum=1)
+        x_array.Label = u'X-横梁-层%d' % (idx + 1)
+        x_array.Placement = Base.Placement(Base.Vector(0, -y_len/2, 0), Base.Rotation())
+        frame_group.addObject(x_array)
+        
+        all_beams.append({'part': u'X-横梁', 'profile': profile, 'length': x_len, 'qty': 2, 'z': z_pos})
 
-        # 2. Create Y beam shapes (along Y, at given Z position) — 2 beams at ±x/2
-        for x_sign in [1, -1]:
-            y_shape = _make_beam_shape(y_len, profile, 'Y')
-            y_shape.Placement = Base.Placement(
-                Base.Vector(x_sign * x_len / 2.0, 0, z_pos),
-                Base.Rotation()
-            )
-            y_beam = doc.addObject('Part::Feature', 'YBeam%d' % (idx + 1))
-            y_beam.Shape = y_shape
-            y_beam.Label = u'Y-纵梁'
-            frame_group.addObject(y_beam)
-            all_beams.append({'part': u'Y-纵梁', 'profile': profile, 'length': y_len, 'qty': 1, 'z': z_pos})
+    # ---- Y Beams: use Draft.make_rect_array ----
+    # Create one Y beam at origin, then array to ±X/2 positions
+    for idx, z_pos in enumerate(z_positions):
+        y_shape = _make_beam_shape(y_len, profile, 'Y')
+        y_base = doc.addObject('Part::Feature', 'YBeamBase%d' % idx)
+        y_base.Shape = y_shape
+        y_base.Placement = Base.Placement(Base.Vector(0, 0, z_pos), Base.Rotation())
+        
+        # Array: 2 items along X, spaced by x_len
+        y_array = Draft.make_rect_array(y_base, xvector=Base.Vector(x_len, 0, 0), 
+                                         xnum=2, ynum=1, znum=1)
+        y_array.Label = u'Y-纵梁-层%d' % (idx + 1)
+        y_array.Placement = Base.Placement(Base.Vector(-x_len/2, 0, 0), Base.Rotation())
+        frame_group.addObject(y_array)
+        
+        all_beams.append({'part': u'Y-纵梁', 'profile': profile, 'length': y_len, 'qty': 2, 'z': z_pos})
 
-    # 3. Create 4 Z posts at corners (Z direction) — full height, centered at Z=0
-    for x_sign in [1, -1]:
-        for y_sign in [1, -1]:
-            z_post = _make_beam_shape(z_len, profile, 'Z')
-            z_post.Placement = Base.Placement(
-                Base.Vector(x_sign * x_len / 2.0, y_sign * y_len / 2.0, 0.0),
-                Base.Rotation()
-            )
-            z_post_obj = doc.addObject('Part::Feature', 'ZPost')
-            z_post_obj.Shape = z_post
-            z_post_obj.Label = u'Z-立柱'
-            frame_group.addObject(z_post_obj)
-            all_beams.append({'part': u'Z-立柱', 'profile': profile, 'length': z_len, 'qty': 1, 'z': 0.0})
+    # ---- Z Posts: use Draft.make_rect_array ----
+    # Create one Z post at origin, then array to 4 corners
+    z_shape = _make_beam_shape(z_len, profile, 'Z')
+    z_base = doc.addObject('Part::Feature', 'ZPostBase')
+    z_base.Shape = z_shape
+    z_base.Placement = Base.Placement(Base.Vector(0, 0, 0), Base.Rotation())
+    
+    # Array: 2x2 grid in XY plane, spaced by x_len and y_len
+    z_array = Draft.make_rect_array(z_base, xvector=Base.Vector(x_len, 0, 0), 
+                                     yvector=Base.Vector(0, y_len, 0),
+                                     xnum=2, ynum=2, znum=1)
+    z_array.Label = u'Z-立柱'
+    z_array.Placement = Base.Placement(Base.Vector(-x_len/2, -y_len/2, 0), Base.Rotation())
+    frame_group.addObject(z_array)
+    
+    all_beams.append({'part': u'Z-立柱', 'profile': profile, 'length': z_len, 'qty': 4, 'z': 0.0})
 
     # ---- BOM Spreadsheet ----
     _create_bom_spreadsheet(doc, all_beams, material, z_layers)
@@ -201,7 +211,7 @@ def _create_bom_spreadsheet(doc, beams, material, z_layers):
     agg = {}
     for b in beams:
         key = (b['part'], b['profile'], b['length'])
-        agg[key] = agg.get(key, 0) + 1
+        agg[key] = agg.get(key, 0) + b.get('qty', 1)
 
     row = 2
     total_len = 0
@@ -233,8 +243,8 @@ def get_bom_summary(beams):
         key = b['part'] + ' (' + b['profile'] + ')'
         if key not in summary:
             summary[key] = {'length': 0, 'qty': 0}
-        summary[key]['length'] += b['length'] * b['qty']
-        summary[key]['qty'] += b['qty']
+        summary[key]['length'] += b['length'] * b.get('qty', 1)
+        summary[key]['qty'] += b.get('qty', 1)
     return summary
 
 
@@ -247,7 +257,7 @@ def export_bom_csv(beams, filepath, material='Aluminum 6061'):
         agg = {}
         for b in beams:
             key = (b['part'], b['profile'], b['length'])
-            agg[key] = agg.get(key, 0) + 1
+            agg[key] = agg.get(key, 0) + b.get('qty', 1)
         total = 0
         for idx, ((part, profile, length), qty) in enumerate(sorted(agg.items()), 1):
             tl = length * qty
