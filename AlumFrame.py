@@ -226,9 +226,11 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
     
     # ---- Array layers in Z direction ----
     # Array the compound in Z direction for multiple layers
+    # Z spacing = (height - profile_size) / z_layers
     if z_layers >= 1:
         z_positions = _z_layer_positions(height, z_layers)
-        z_spacing = z_positions[1] - z_positions[0] if len(z_positions) > 1 else height
+        # Calculate Z spacing: (height - profile_size) / z_layers
+        z_spacing = (height - profile_size) / z_layers
         
         layer_array = Draft.make_array(layer_compound,
                                        Base.Vector(0, 0, 0),           # xvector (not used)
@@ -237,7 +239,8 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         layer_array.Label = u'水平层阵列'
         # Use IntervalZ for Z spacing
         layer_array.IntervalZ = Base.Vector(0, 0, z_spacing)
-        layer_array.NumberZ = len(z_positions)
+        layer_array.NumberZ = z_layers + 1  # z_layers + 1 positions
+        # Start from Z=0
         layer_array.Placement = Base.Placement(Base.Vector(0, 0, 0), Base.Rotation())
         frame_group.addObject(layer_array)
     
