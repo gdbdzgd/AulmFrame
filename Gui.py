@@ -249,8 +249,11 @@ class AlumFrameTaskPanel:
             self.form, u'保存BOM', 'bom.csv', 'CSV Files (*.csv)')
         if filepath:
             try:
+                from .config import HOLE_SPECS, PROFILES
                 export_bom_csv(self._last_beams, filepath,
-                               self.material_edit.text() or 'Aluminum 6061')
+                               self.material_edit.text() or 'Aluminum 6061',
+                               hole_spec=HOLE_SPECS.get(self.profile_combo.currentText()),
+                               profile_size=PROFILES[self.profile_combo.currentText()]['w'])
                 self.result_label.setText(
                     u'<font color="green">✓ BOM已导出至: %s</font>' % filepath)
             except Exception as e:

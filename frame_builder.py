@@ -13,7 +13,9 @@ except ImportError:
     Base = None
     Draft = None
 
-from .config import PROFILES
+from .config import (PROFILES, HOLE_SPECS, OBJ_FRAME, OBJ_PARAMS, OBJ_BOM,
+                     OBJ_DIMENSIONS, OBJ_X_BASE, OBJ_Y_BASE, OBJ_Z_BASE,
+                     OBJ_LAYER_COMPOUND)
 from .position_calculator import FramePositionCalculator
 from .beam_factory import BeamFactory
 
@@ -21,9 +23,11 @@ from .beam_factory import BeamFactory
 class FrameBuilder:
     """Builder class for creating aluminum frames."""
     
-    # Parameters stored on the Frame group so frames can be edited later
+    # Parameters stored on the Frame group so frames can be edited later.
+    # These also drive the geometry via expressions (see _bind_expressions).
     _PARAM_PROPS = [
         ('FrameProfile', 'App::PropertyString', 'profile'),
+        ('FrameProfileSize', 'App::PropertyLength', 'profile_size'),
         ('FrameLength', 'App::PropertyLength', 'length'),
         ('FrameWidth', 'App::PropertyLength', 'width'),
         ('FrameHeight', 'App::PropertyLength', 'height'),
@@ -115,12 +119,19 @@ class FrameBuilder:
     def _build_into_doc(self, doc, calc, profile, profile_size,
                         length, width, height, material, z_layers):
         """Create all frame objects in doc (doc must be the active document)."""
+        # Parameters spreadsheet first: single source of truth, lives OUTSIDE
+        # the Frame group (objects inside the group cannot reference the
+        # group itself - that would be a cyclic dependency)
+        self._create_params_sheet(profile, length, width, height,
+                                  material, z_layers, profile_size)
+        
         # Create main frame group
-        frame_group = doc.addObject('App::DocumentObjectGroup', 'Frame')
+        frame_group = doc.addObject('App::DocumentObjectGroup', OBJ_FRAME)
         frame_group.Label = u'Frame'
         
-        # Store parameters on the group for later editing
-        self._store_params(frame_group, profile, length, width, height, material, z_layers)
+        # Store parameters on the group for identification / editing
+        self._store_params(frame_group, profile, length, width, height,
+                           material, z_layers, profile_size)
         
         # ========== Create Horizontal Layer (X + Y Beams) ==========
         layer_compound = self._create_horizontal_layer(calc, profile, frame_group)
@@ -131,17 +142,103 @@ class FrameBuilder:
         # ========== Create Z Posts ==========
         self._create_z_posts(calc, profile, height, frame_group)
         
+        # ========== Bind expressions (true parametric) ==========
+        self._bind_expressions(frame_group)
+        
         # ========== Create BOM ==========
-        self._create_bom(material, z_layers, frame_group)
+        self._create_bom(material, z_layers, frame_group, profile)
         
         # ========== Create Measurements ==========
         self._create_measurements(frame_group, length, width, height, z_layers, profile_size)
     
+    def _create_params_sheet(self, profile, length, width, height,
+                             material, z_layers, profile_size):
+        """Create the Parameters spreadsheet (single source of truth).
+
+        Cell map: B1 profile, B2 profile size, B3 length, B4 width,
+        B5 height, B6 z layers, B7 material.
+        """
+        sh = self.doc.addObject('Spreadsheet::Sheet', OBJ_PARAMS)
+        sh.Label = u'框架参数'
+        rows = [
+            (u'型材规格', profile),
+            (u'型材宽度', '%g mm' % profile_size),
+            (u'长度 X', '%g mm' % length),
+            (u'宽度 Y', '%g mm' % width),
+            (u'高度 Z', '%g mm' % height),
+            (u'Z层数', str(int(z_layers))),
+            (u'材料', material),
+        ]
+        for i, (label, value) in enumerate(rows, 1):
+            sh.set('A%d' % i, label)
+            sh.set('B%d' % i, value)
+        return sh
+    
+    def _bind_expressions(self, frame_group):
+        """Bind geometry to the Parameters spreadsheet (true parametric).
+
+        Editing e.g. Parameters.B3 (length) updates boxes, arrays, frame
+        group properties and measurements live. References go to the
+        spreadsheet (outside the Frame group), never to the group itself.
+        """
+        P = OBJ_PARAMS
+        ps = P + '.B2'   # profile size
+        L = P + '.B3'    # length
+        W = P + '.B4'    # width
+        H = P + '.B5'    # height
+        Z = P + '.B6'    # z layers
+        
+        # Mirror parameters onto the Frame group (identification + editing)
+        frame_group.setExpression('FrameProfile', P + '.B1')
+        frame_group.setExpression('FrameProfileSize', ps)
+        frame_group.setExpression('FrameLength', L)
+        frame_group.setExpression('FrameWidth', W)
+        frame_group.setExpression('FrameHeight', H)
+        frame_group.setExpression('FrameZLayers', Z)
+        frame_group.setExpression('FrameMaterial', P + '.B7')
+        
+        # Z post base (corner-anchored box) and its 2x2 array
+        z_base = self._bases['Z']
+        z_base.setExpression('Length', ps)
+        z_base.setExpression('Width', ps)
+        z_base.setExpression('Height', H)
+        z_base.setExpression('Placement.Base.x', L + ' / -2')
+        z_base.setExpression('Placement.Base.y', W + ' / -2')
+        self._z_array.setExpression('IntervalX.x', '(%s - %s) / 1mm' % (L, ps))
+        self._z_array.setExpression('IntervalY.y', '(%s - %s) / 1mm' % (W, ps))
+        
+        # X beam base (centered box, z from 0) and its 1x2 array
+        x_base = self._bases['X']
+        x_base.setExpression('Length', '%s - 2 * %s' % (L, ps))
+        x_base.setExpression('Width', ps)
+        x_base.setExpression('Height', ps)
+        x_base.setExpression('Placement.Base.x', '%s - %s / 2' % (ps, L))
+        x_base.setExpression('Placement.Base.y', ps + ' / -2')
+        self._x_array.setExpression('Placement.Base.y', '%s / 2 - %s / 2' % (ps, W))
+        self._x_array.setExpression('IntervalY.y', '(%s - %s) / 1mm' % (W, ps))
+        
+        # Y beam base and its 2x1 array
+        y_base = self._bases['Y']
+        y_base.setExpression('Length', ps)
+        y_base.setExpression('Width', '%s - 2 * %s' % (W, ps))
+        y_base.setExpression('Height', ps)
+        y_base.setExpression('Placement.Base.x', ps + ' / -2')
+        y_base.setExpression('Placement.Base.y', '%s - %s / 2' % (ps, W))
+        self._y_array.setExpression('Placement.Base.x', '%s / 2 - %s / 2' % (ps, L))
+        self._y_array.setExpression('IntervalX.x', '(%s - %s) / 1mm' % (L, ps))
+        
+        # Z layer array: spacing and count
+        self._layer_array.setExpression(
+            'IntervalZ.z', '(%s - %s) / %s / 1mm' % (H, ps, Z))
+        self._layer_array.setExpression('NumberZ', '%s + 1' % Z)
+    
     # ========== Parameter storage / frame lookup ==========
-    def _store_params(self, group, profile, length, width, height, material, z_layers):
+    def _store_params(self, group, profile, length, width, height, material,
+                      z_layers, profile_size):
         """Store build parameters as properties on the Frame group."""
         values = {'profile': profile, 'length': length, 'width': width,
-                  'height': height, 'material': material, 'z_layers': z_layers}
+                  'height': height, 'material': material, 'z_layers': z_layers,
+                  'profile_size': profile_size}
         for prop, ptype, key in self._PARAM_PROPS:
             if not hasattr(group, prop):
                 group.addProperty(ptype, prop, 'AlumFrame', u'框架参数(可编辑)')
@@ -194,13 +291,13 @@ class FrameBuilder:
                     collect(child)
         
         for obj in list(doc.Objects):
-            if hasattr(obj, 'FrameProfile') or obj.Name in ('Frame', 'BOM'):
+            if hasattr(obj, 'FrameProfile') or obj.Name in (OBJ_FRAME, OBJ_BOM, OBJ_PARAMS):
                 collect(obj)
         # Sweep orphans left over from partial/legacy builds
         for obj in list(doc.Objects):
             if obj not in doomed and obj.Name.startswith(
-                    ('Array', 'XBeamBase', 'YBeamBase', 'ZPostBase',
-                     'LayerCompound', 'Dim')):
+                    ('Array', OBJ_X_BASE, OBJ_Y_BASE, OBJ_Z_BASE,
+                     OBJ_LAYER_COMPOUND, 'Dim')):
                 doomed.append(obj)
         for obj in doomed:
             try:
@@ -215,7 +312,7 @@ class FrameBuilder:
             calc.get_x_beam_length(), 
             profile, 
             'X', 
-            'XBeamBase'
+            OBJ_X_BASE
         )
         self._bases['X'] = x_base
         
@@ -234,13 +331,14 @@ class FrameBuilder:
             Base.Rotation()
         )
         frame_group.addObject(x_array)
+        self._x_array = x_array
         
         # Create Y beams
         y_base = self.beam_factory.create_beam(
             calc.get_y_beam_length(),
             profile,
             'Y',
-            'YBeamBase'
+            OBJ_Y_BASE
         )
         self._bases['Y'] = y_base
         
@@ -259,9 +357,10 @@ class FrameBuilder:
             Base.Rotation()
         )
         frame_group.addObject(y_array)
+        self._y_array = y_array
         
         # Create compound
-        layer_compound = self.doc.addObject('Part::Compound', 'LayerCompound')
+        layer_compound = self.doc.addObject('Part::Compound', OBJ_LAYER_COMPOUND)
         layer_compound.Label = u'水平层复合体'
         layer_compound.Links = [x_array, y_array]
         frame_group.addObject(layer_compound)
@@ -287,21 +386,26 @@ class FrameBuilder:
             Base.Rotation()
         )
         frame_group.addObject(layer_array)
+        self._layer_array = layer_array
         
-        # Record beam metadata
+        # Record beam metadata (qty derived from array counts, not hardcoded)
+        x_qty = self._x_array.NumberX * self._x_array.NumberY
+        y_qty = self._y_array.NumberX * self._y_array.NumberY
+        x_profile = layer_compound.Links[0].Base.ProfileSpec
+        y_profile = layer_compound.Links[1].Base.ProfileSpec
         for z_pos in z_positions:
             self.all_beams.append({
                 'part': u'X-横梁',
-                'profile': layer_compound.Links[0].Base.ProfileSpec,
+                'profile': x_profile,
                 'length': calc.get_x_beam_length(),
-                'qty': 2,
+                'qty': x_qty,
                 'z': z_pos
             })
             self.all_beams.append({
                 'part': u'Y-纵梁',
-                'profile': layer_compound.Links[1].Base.ProfileSpec,
+                'profile': y_profile,
                 'length': calc.get_y_beam_length(),
-                'qty': 2,
+                'qty': y_qty,
                 'z': z_pos
             })
     
@@ -311,7 +415,7 @@ class FrameBuilder:
             height,
             profile,
             'Z',
-            'ZPostBase'
+            OBJ_Z_BASE
         )
         self._bases['Z'] = z_base
         
@@ -333,21 +437,26 @@ class FrameBuilder:
         )
         z_array.Label = u'Z-立柱'
         frame_group.addObject(z_array)
+        self._z_array = z_array
         
-        # Record Z post metadata
+        # Record Z post metadata (qty derived from array counts)
+        z_qty = z_array.NumberX * z_array.NumberY
         self.all_beams.append({
             'part': u'Z-立柱',
             'profile': profile,
             'length': height,
-            'qty': 4,
+            'qty': z_qty,
             'z': 0.0
         })
     
-    def _create_bom(self, material, z_layers, frame_group):
+    def _create_bom(self, material, z_layers, frame_group, profile):
         """Create BOM spreadsheet (kept inside the Frame group)."""
         # Import BOM module here to avoid circular imports
         from .bom import create_bom_spreadsheet
-        bom = create_bom_spreadsheet(self.doc, self.all_beams, material, z_layers)
+        bom = create_bom_spreadsheet(
+            self.doc, self.all_beams, material, z_layers,
+            hole_spec=HOLE_SPECS.get(profile),
+            profile_size=PROFILES[profile]['w'])
         frame_group.addObject(bom)
         return bom
     
