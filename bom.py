@@ -64,26 +64,54 @@ def create_bom_spreadsheet(doc, beams, material, z_layers,
 
 
 def hole_note(part, length, hole_spec=None, profile_size=0):
-    """Compute hole/tap positions for one beam type.
+    """Compute hole/tap positions for one beam type (detailed per-hole list).
 
     - Horizontal beams (X/Y): cross-through holes at both ends where they
-      connect to the Z posts, on the profile axis at profile_size/2 from
-      each end face (e.g. 20x20 -> M5 cross hole @ 10mm from each end).
-    - Z posts: tapped hole on top & bottom end faces (e.g. M6).
+      connect to the Z posts.  Each cross-hole site has 2 perpendicular holes
+      along the two transverse axes (forming a '+').  Listed per instance.
+    - Z posts: tapped hole on top & bottom end faces (each 1 hole along beam
+      axis).  Listed per instance.
 
-    Returns a human-readable note string ('' when no spec given).
+    Returns a multi-line human-readable note string ('' when no spec given).
     """
     if not hole_spec or profile_size <= 0:
         return ''
+    c = profile_size / 2.0  # center offset from end face = profile/2
+    h = profile_size / 2.0  # center height in profile cross-section
+
     if part in (u'X-横梁', u'Y-纵梁'):
         d = hole_spec['beam_cross']
-        pos = profile_size / 2.0
-        return (u'两端十字通孔%s @ 距端面%.0f / %.0fmm（截面中心）'
-                % (d, pos, length - pos))
+        lb = length  # net beam length
+        p1 = c                          # distance from near end face
+        p2 = round(lb - c, 1)           # distance from far end face
+        # Transverse axes differ by beam orientation
+        if part == u'X-横梁':
+            trans = u'Y+Z'
+            p1_coord = '(x=%.0f, y=%.0f, z=%.0f)' % (p1, h, h)
+            p2_coord = '(x=%.0f, y=%.0f, z=%.0f)' % (p2, h, h)
+        else:
+            trans = u'X+Z'
+            p1_coord = '(x=%.0f, y=%.0f, z=%.0f)' % (h, p1, h)
+            p2_coord = '(x=%.0f, y=%.0f, z=%.0f)' % (h, p2, h)
+        return (
+            u'每根2处十字孔，每处2孔（%s轴⊥梁轴），截面中心z=%.0fmm\n'
+            u'  孔1: %s距端面%.0fmm  %s\n'
+            u'  孔2: %s距端面%.0fmm  %s'
+            % (trans, h,
+               d, p1, p1_coord,
+               d, p2, p2_coord))
+
     if part == u'Z-立柱':
         d = hole_spec['post_tap']
         depth = round(int(d[1:]) * 1.5)
-        return u'顶/底端面中心攻丝%s 深%.0fmm' % (d, depth)
+        p1 = c
+        p2 = round(length - c, 1)
+        return (
+            u'每根2处攻丝（沿Z轴），截面中心\n'
+            u'  底孔: %s距底面%.0fmm  (x=%.0f, y=%.0f, z=%.0f)\n'
+            u'  顶孔: %s距底面%.0fmm  (x=%.0f, y=%.0f, z=%.0f)'
+            % (d, p1, h, h, p1,
+               d, p2, h, h, p2))
     return ''
 
 

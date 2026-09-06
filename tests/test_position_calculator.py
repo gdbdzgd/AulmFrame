@@ -93,18 +93,37 @@ class TestAllProfiles(unittest.TestCase):
 
 class TestHoleNotes(unittest.TestCase):
     def test_beam_cross_hole_20(self):
-        # 20x20 beam 560 long: M5 cross holes 10mm from each end
         note = hole_note(u'X-横梁', 560,
                          {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
         self.assertIn('M5', note)
         self.assertIn('10', note)
-        self.assertIn('550', note)  # 560 - 10
+        self.assertIn('550', note)
+
+    def test_beam_cross_hole_coordinates(self):
+        note = hole_note(u'X-横梁', 560,
+                         {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
+        self.assertIn('(x=10, y=10, z=10)', note)
+        self.assertIn('(x=550, y=10, z=10)', note)
+        self.assertIn('Y+Z', note)
+
+    def test_y_beam_hole_coordinates(self):
+        note = hole_note(u'Y-纵梁', 360,
+                         {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
+        self.assertIn('(x=10, y=10, z=10)', note)
+        self.assertIn('(x=10, y=350, z=10)', note)
+        self.assertIn('X+Z', note)
 
     def test_post_tap_20(self):
         note = hole_note(u'Z-立柱', 500,
                          {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
         self.assertIn('M6', note)
-        self.assertIn('9', note)  # depth = 1.5*6
+        self.assertIn('9', note)
+
+    def test_post_tap_coordinates(self):
+        note = hole_note(u'Z-立柱', 500,
+                         {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
+        self.assertIn('(x=10, y=10, z=10)', note)
+        self.assertIn('(x=10, y=10, z=490)', note)
 
     def test_no_spec_returns_empty(self):
         self.assertEqual(hole_note(u'X-横梁', 560), '')
