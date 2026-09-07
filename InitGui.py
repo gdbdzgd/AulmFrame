@@ -16,8 +16,7 @@ def _get_icon(name):
     except NameError:
         pass
     # Fallback: search Mod directories
-    for mod_dir in [FreeCAD.getUserModDir(),
-                    os.path.expanduser('~/.local/share/FreeCAD/v1-1/Mod'),
+    for mod_dir in [os.path.expanduser('~/.local/share/FreeCAD/v1-1/Mod'),
                     os.path.expanduser('~/.FreeCAD/Mod')]:
         p = os.path.join(mod_dir, 'AlumFrame', 'icons', name)
         if os.path.exists(p):
