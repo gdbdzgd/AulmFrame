@@ -125,6 +125,24 @@ class TestHoleNotes(unittest.TestCase):
         self.assertIn('(x=10, y=10, z=10)', note)
         self.assertIn('(x=10, y=10, z=490)', note)
 
+    def test_post_tap_multi_layer(self):
+        note = hole_note(u'Z-立柱', 500,
+                         {'beam_cross': 'M5', 'post_tap': 'M6'}, 20,
+                         z_layers=3, z_layer_positions=[0, 160, 320, 480])
+        self.assertIn('4处攻丝', note)
+        self.assertIn('z=0)', note)
+        self.assertIn('z=160)', note)
+        self.assertIn('z=320)', note)
+        self.assertIn('z=480)', note)
+
+    def test_post_tap_single_layer(self):
+        note = hole_note(u'Z-立柱', 500,
+                         {'beam_cross': 'M5', 'post_tap': 'M6'}, 20,
+                         z_layers=1, z_layer_positions=[0, 480])
+        self.assertIn('2处攻丝', note)
+        self.assertIn('底孔', note)
+        self.assertIn('顶孔', note)
+
     def test_no_spec_returns_empty(self):
         self.assertEqual(hole_note(u'X-横梁', 560), '')
         self.assertEqual(hole_note(u'X-横梁', 560, {'beam_cross': 'M5'}, 0), '')

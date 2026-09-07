@@ -451,12 +451,17 @@ class FrameBuilder:
     
     def _create_bom(self, material, z_layers, frame_group, profile):
         """Create BOM spreadsheet (kept inside the Frame group)."""
-        # Import BOM module here to avoid circular imports
         from .bom import create_bom_spreadsheet
+        calc = FramePositionCalculator(
+            float(frame_group.FrameLength),
+            float(frame_group.FrameWidth),
+            float(frame_group.FrameHeight),
+            float(frame_group.FrameProfileSize))
         bom = create_bom_spreadsheet(
             self.doc, self.all_beams, material, z_layers,
             hole_spec=HOLE_SPECS.get(profile),
-            profile_size=PROFILES[profile]['w'])
+            profile_size=PROFILES[profile]['w'],
+            z_layer_positions=calc.get_z_layer_positions(z_layers))
         frame_group.addObject(bom)
         return bom
     

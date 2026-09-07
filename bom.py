@@ -5,7 +5,8 @@ BOM (Bill of Materials) module for Aluminum Frame Generator.
 
 
 def create_bom_spreadsheet(doc, beams, material, z_layers,
-                           hole_spec=None, profile_size=0):
+                           hole_spec=None, profile_size=0,
+                           z_layer_positions=None):
     """Create a BOM spreadsheet in the document.
     
     Parameters
@@ -22,6 +23,8 @@ def create_bom_spreadsheet(doc, beams, material, z_layers,
         {'beam_cross': 'M5', 'post_tap': 'M6'}
     profile_size : float, optional
         Profile width (mm), used to compute hole positions
+    z_layer_positions : list, optional
+        Z positions of each layer (mm), for Z post hole calculation
     """
     bom = doc.addObject('Spreadsheet::Sheet', 'BOM')
     bom.Label = u'BOM 规格表'
@@ -48,7 +51,9 @@ def create_bom_spreadsheet(doc, beams, material, z_layers,
         tl = length * qty
         bom.set('G' + str(row), str(tl))
         bom.set('H' + str(row),
-                hole_note(part, length, hole_spec, profile_size))
+                hole_note(part, length, hole_spec, profile_size,
+                          z_layers=z_layers,
+                          z_layer_positions=z_layer_positions))
         total_len += tl
         row += 1
     
@@ -63,28 +68,40 @@ def create_bom_spreadsheet(doc, beams, material, z_layers,
     return bom
 
 
-def hole_note(part, length, hole_spec=None, profile_size=0):
+def hole_note(part, length, hole_spec=None, profile_size=0,
+              z_layers=0, z_layer_positions=None):
     """Compute hole/tap positions for one beam type (detailed per-hole list).
 
-    - Horizontal beams (X/Y): cross-through holes at both ends where they
-      connect to the Z posts.  Each cross-hole site has 2 perpendicular holes
-      along the two transverse axes (forming a '+').  Listed per instance.
-    - Z posts: tapped hole on top & bottom end faces (each 1 hole along beam
-      axis).  Listed per instance.
+    Parameters
+    ----------
+    part : str
+        Beam type (u'X-横梁', u'Y-纵梁', u'Z-立柱')
+    length : float
+        Beam length (mm)
+    hole_spec : dict, optional
+        {'beam_cross': 'M5', 'post_tap': 'M6'}
+    profile_size : float
+        Profile width (mm)
+    z_layers : int
+        Number of Z horizontal layers (for Z post holes)
+    z_layer_positions : list, optional
+        Z positions of each layer (mm). If None, only bottom+top holes.
 
-    Returns a multi-line human-readable note string ('' when no spec given).
+    Returns
+    -------
+    str
+        Multi-line note with per-hole coordinates.
     """
     if not hole_spec or profile_size <= 0:
         return ''
-    c = profile_size / 2.0  # center offset from end face = profile/2
+    c = profile_size / 2.0  # center offset from end face
     h = profile_size / 2.0  # center height in profile cross-section
 
     if part in (u'X-横梁', u'Y-纵梁'):
         d = hole_spec['beam_cross']
-        lb = length  # net beam length
-        p1 = c                          # distance from near end face
-        p2 = round(lb - c, 1)           # distance from far end face
-        # Transverse axes differ by beam orientation
+        lb = length
+        p1 = c
+        p2 = round(lb - c, 1)
         if part == u'X-横梁':
             trans = u'Y+Z'
             p1_coord = '(x=%.0f, y=%.0f, z=%.0f)' % (p1, h, h)
@@ -104,19 +121,28 @@ def hole_note(part, length, hole_spec=None, profile_size=0):
     if part == u'Z-立柱':
         d = hole_spec['post_tap']
         depth = round(int(d[1:]) * 1.5)
-        p1 = c
-        p2 = round(length - c, 1)
-        return (
-            u'每根2处攻丝（沿Z轴），截面中心\n'
-            u'  底孔: %s距底面%.0fmm  (x=%.0f, y=%.0f, z=%.0f)\n'
-            u'  顶孔: %s距底面%.0fmm  (x=%.0f, y=%.0f, z=%.0f)'
-            % (d, p1, h, h, p1,
-               d, p2, h, h, p2))
+        # Z post has holes at every layer level
+        if z_layer_positions:
+            positions = z_layer_positions
+        else:
+            # Default: bottom + top end faces
+            positions = [c, round(length - c, 1)]
+        lines = [u'每根%d处攻丝（沿Z轴），截面中心' % len(positions)]
+        for i, z in enumerate(positions):
+            if len(positions) == 2:
+                label = u'底孔' if i == 0 else u'顶孔'
+            else:
+                label = u'孔%d' % (i + 1)
+            lines.append(
+                u'  %s: %s距底面%.0fmm 深%.0fmm  (x=%.0f, y=%.0f, z=%.0f)'
+                % (label, d, z, depth, h, h, z))
+        return u'\n'.join(lines)
     return ''
 
 
 def export_bom_csv(beams, filepath, material='Aluminum 6061',
-                   hole_spec=None, profile_size=0):
+                   hole_spec=None, profile_size=0,
+                   z_layers=0, z_layer_positions=None):
     """Export BOM to a CSV file.
 
     Parameters
@@ -131,6 +157,10 @@ def export_bom_csv(beams, filepath, material='Aluminum 6061',
         Hole/tap spec from config.HOLE_SPECS (adds a hole-note column)
     profile_size : float, optional
         Profile width (mm) for hole position computation
+    z_layers : int, optional
+        Number of Z layers
+    z_layer_positions : list, optional
+        Z positions of each layer (mm)
     """
     import csv
     with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
@@ -146,7 +176,9 @@ def export_bom_csv(beams, filepath, material='Aluminum 6061',
             tl = length * qty
             total += tl
             writer.writerow([idx, part, profile, length, qty, material, tl,
-                             hole_note(part, length, hole_spec, profile_size)])
+                             hole_note(part, length, hole_spec, profile_size,
+                                       z_layers=z_layers,
+                                       z_layer_positions=z_layer_positions)])
         writer.writerow(['', u'合计', '', '', '', '', total])
 
 
