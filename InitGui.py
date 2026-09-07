@@ -9,8 +9,23 @@ from FreeCAD import Gui
 from FreeCADGui import Workbench
 import os
 
-_ICON_FRAME = os.path.join(os.path.dirname(__file__), 'icons', 'frame_xpm.xpm')
-_ICON_EDIT = os.path.join(os.path.dirname(__file__), 'icons', 'edit_xpm.xpm')
+def _get_icon(name):
+    """Find icon file robustly — handles missing __file__ in FreeCAD."""
+    try:
+        return os.path.join(os.path.dirname(__file__), 'icons', name)
+    except NameError:
+        pass
+    # Fallback: search Mod directories
+    for mod_dir in [FreeCAD.getUserModDir(),
+                    os.path.expanduser('~/.local/share/FreeCAD/v1-1/Mod'),
+                    os.path.expanduser('~/.FreeCAD/Mod')]:
+        p = os.path.join(mod_dir, 'AlumFrame', 'icons', name)
+        if os.path.exists(p):
+            return p
+    return name
+
+_ICON_FRAME = _get_icon('frame_xpm.xpm')
+_ICON_EDIT = _get_icon('edit_xpm.xpm')
 
 
 def _open_panel(edit_selected=False):
