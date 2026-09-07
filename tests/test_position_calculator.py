@@ -1,15 +1,12 @@
 # -*- coding: utf-8 -*-
-"""Unit tests for position calculations and BOM hole notes (no FreeCAD needed).
-
-Run:  python3 -m unittest discover tests -v
-"""
+"""Unit tests for position calculations and BOM hole notes (no FreeCAD needed)."""
 
 import os
 import sys
 import unittest
 
 _here = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))  # repo parent (contains AulmFrame pkg)
+sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
 
 from AulmFrame.position_calculator import FramePositionCalculator
 from AulmFrame.config import PROFILES, HOLE_SPECS
@@ -21,7 +18,6 @@ class TestAnchorAndPosts(unittest.TestCase):
         self.c = FramePositionCalculator(600, 400, 500, 40)
 
     def test_anchor_corner(self):
-        # anchor is the outer corner of the first post = (-L/2, -W/2)
         self.assertAlmostEqual(self.c.z_post_anchor_x, -300.0)
         self.assertAlmostEqual(self.c.z_post_anchor_y, -200.0)
         self.assertEqual(self.c.z_post_anchor_z, 0)
@@ -43,16 +39,14 @@ class TestBeams(unittest.TestCase):
         self.c = FramePositionCalculator(600, 400, 500, 40)
 
     def test_beam_lengths(self):
-        # beams fit between post inner faces
         self.assertEqual(self.c.get_x_beam_length(), 520)
         self.assertEqual(self.c.get_y_beam_length(), 320)
 
     def test_beam_placements_flush_with_posts(self):
-        # beam band must be flush with the post band (not half outside)
         x_y = self.c.get_x_beam_placement()[1]
         y_x = self.c.get_y_beam_placement()[0]
-        self.assertAlmostEqual(x_y, -180.0)  # -W/2 + ps/2
-        self.assertAlmostEqual(y_x, -280.0)  # -L/2 + ps/2
+        self.assertAlmostEqual(x_y, -180.0)
+        self.assertAlmostEqual(y_x, -280.0)
 
     def test_beam_spacings(self):
         self.assertEqual(self.c.get_x_beam_spacing(), 360)
@@ -80,7 +74,6 @@ class TestAllProfiles(unittest.TestCase):
         for name, p in PROFILES.items():
             ps = p['w']
             c = FramePositionCalculator(600, 400, 500, ps)
-            # beams positive, frame flush, layers sane
             self.assertGreater(c.get_x_beam_length(), 0, name)
             self.assertGreater(c.get_y_beam_length(), 0, name)
             self.assertAlmostEqual(
@@ -92,56 +85,68 @@ class TestAllProfiles(unittest.TestCase):
 
 
 class TestHoleNotes(unittest.TestCase):
-    def test_beam_cross_hole_20(self):
+    def test_x_beam_tap_at_end_faces(self):
         note = hole_note(u'X-横梁', 560,
                          {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
-        self.assertIn('M5', note)
-        self.assertIn('10', note)
-        self.assertIn('550', note)
+        self.assertIn('M6', note)
+        self.assertIn('端1: M6距端面0mm', note)
+        self.assertIn('端2: M6距端面560mm', note)
 
-    def test_beam_cross_hole_coordinates(self):
+    def test_x_beam_coordinates(self):
         note = hole_note(u'X-横梁', 560,
                          {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
-        self.assertIn('(x=10, y=10, z=10)', note)
-        self.assertIn('(x=550, y=10, z=10)', note)
-        self.assertIn('Y+Z', note)
+        self.assertIn('(x=0, y=10, z=10)', note)
+        self.assertIn('(x=560, y=10, z=10)', note)
 
-    def test_y_beam_hole_coordinates(self):
+    def test_y_beam_tap_at_end_faces(self):
         note = hole_note(u'Y-纵梁', 360,
                          {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
-        self.assertIn('(x=10, y=10, z=10)', note)
-        self.assertIn('(x=10, y=350, z=10)', note)
-        self.assertIn('X+Z', note)
+        self.assertIn('M6', note)
+        self.assertIn('端1: M6距端面0mm', note)
+        self.assertIn('端2: M6距端面360mm', note)
 
-    def test_post_tap_20(self):
+    def test_y_beam_coordinates(self):
+        note = hole_note(u'Y-纵梁', 360,
+                         {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
+        self.assertIn('(x=10, y=0, z=10)', note)
+        self.assertIn('(x=10, y=360, z=10)', note)
+
+    def test_z_post_top_bottom_tap(self):
         note = hole_note(u'Z-立柱', 500,
                          {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
         self.assertIn('M6', note)
-        self.assertIn('9', note)
+        self.assertIn('底部: M5十字通孔 + M6攻丝', note)
+        self.assertIn('顶部: M5十字通孔 + M6攻丝', note)
 
-    def test_post_tap_coordinates(self):
+    def test_z_post_default_coordinates(self):
         note = hole_note(u'Z-立柱', 500,
                          {'beam_cross': 'M5', 'post_tap': 'M6'}, 20)
         self.assertIn('(x=10, y=10, z=10)', note)
         self.assertIn('(x=10, y=10, z=490)', note)
 
-    def test_post_tap_multi_layer(self):
+    def test_z_post_multi_layer_cross_holes(self):
+        calc = FramePositionCalculator(600, 400, 500, 20)
+        positions = calc.get_z_layer_positions(2)
         note = hole_note(u'Z-立柱', 500,
                          {'beam_cross': 'M5', 'post_tap': 'M6'}, 20,
-                         z_layers=3, z_layer_positions=[0, 160, 320, 480])
-        self.assertIn('4处攻丝', note)
+                         z_layers=2, z_layer_positions=positions)
+        self.assertIn('M5十字通孔', note)
+        self.assertIn('第2层: M5十字通孔', note)
+        self.assertIn('底部: M5十字通孔 + M6攻丝', note)
+        self.assertIn('顶部: M5十字通孔 + M6攻丝', note)
         self.assertIn('z=0)', note)
-        self.assertIn('z=160)', note)
-        self.assertIn('z=320)', note)
+        self.assertIn('z=240)', note)
         self.assertIn('z=480)', note)
 
-    def test_post_tap_single_layer(self):
+    def test_z_post_single_layer(self):
+        calc = FramePositionCalculator(600, 400, 500, 20)
+        positions = calc.get_z_layer_positions(1)
         note = hole_note(u'Z-立柱', 500,
                          {'beam_cross': 'M5', 'post_tap': 'M6'}, 20,
-                         z_layers=1, z_layer_positions=[0, 480])
-        self.assertIn('2处攻丝', note)
-        self.assertIn('底孔', note)
-        self.assertIn('顶孔', note)
+                         z_layers=1, z_layer_positions=positions)
+        self.assertIn('底部: M5十字通孔 + M6攻丝', note)
+        self.assertIn('顶部: M5十字通孔 + M6攻丝', note)
+        self.assertNotIn('第', note)
 
     def test_no_spec_returns_empty(self):
         self.assertEqual(hole_note(u'X-横梁', 560), '')

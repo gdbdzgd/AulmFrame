@@ -98,45 +98,54 @@ def hole_note(part, length, hole_spec=None, profile_size=0,
     h = profile_size / 2.0  # center height in profile cross-section
 
     if part in (u'X-横梁', u'Y-纵梁'):
-        d = hole_spec['beam_cross']
-        lb = length
-        p1 = c
-        p2 = round(lb - c, 1)
-        if part == u'X-横梁':
-            trans = u'Y+Z'
-            p1_coord = '(x=%.0f, y=%.0f, z=%.0f)' % (p1, h, h)
-            p2_coord = '(x=%.0f, y=%.0f, z=%.0f)' % (p2, h, h)
-        else:
-            trans = u'X+Z'
-            p1_coord = '(x=%.0f, y=%.0f, z=%.0f)' % (h, p1, h)
-            p2_coord = '(x=%.0f, y=%.0f, z=%.0f)' % (h, p2, h)
-        return (
-            u'每根2处十字孔，每处2孔（%s轴⊥梁轴），截面中心z=%.0fmm\n'
-            u'  孔1: %s距端面%.0fmm  %s\n'
-            u'  孔2: %s距端面%.0fmm  %s'
-            % (trans, h,
-               d, p1, p1_coord,
-               d, p2, p2_coord))
-
-    if part == u'Z-立柱':
         d = hole_spec['post_tap']
         depth = round(int(d[1:]) * 1.5)
-        # Z post has holes at every layer level
+        lb = length
+        p1 = 0.0
+        p2 = lb
+        
+        if part == u'X-横梁':
+            coord1 = '(x=%.0f, y=%.0f, z=%.0f)' % (p1, h, h)
+            coord2 = '(x=%.0f, y=%.0f, z=%.0f)' % (p2, h, h)
+        else:
+            coord1 = '(x=%.0f, y=%.0f, z=%.0f)' % (h, p1, h)
+            coord2 = '(x=%.0f, y=%.0f, z=%.0f)' % (h, p2, h)
+        
+        return (
+            u'每根2处攻丝（沿梁轴），截面中心\n'
+            u'  端1: %s距端面%.0fmm 深%.0fmm  %s\n'
+            u'  端2: %s距端面%.0fmm 深%.0fmm  %s'
+            % (d, p1, depth, coord1,
+               d, p2, depth, coord2))
+
+    if part == u'Z-立柱':
+        cross_d = hole_spec['beam_cross']
+        tap_d = hole_spec['post_tap']
+        tap_depth = round(int(tap_d[1:]) * 1.5)
+        h = profile_size / 2.0
+        
         if z_layer_positions:
             positions = z_layer_positions
         else:
-            # Default: bottom + top end faces
             positions = [c, round(length - c, 1)]
-        lines = [u'每根%d处攻丝（沿Z轴），截面中心' % len(positions)]
+        
+        lines = []
         for i, z in enumerate(positions):
-            if len(positions) == 2:
-                label = u'底孔' if i == 0 else u'顶孔'
+            coord = '(x=%.0f, y=%.0f, z=%.0f)' % (h, h, z)
+            
+            if i == 0 or i == len(positions) - 1:
+                label = u'底部' if i == 0 else u'顶部'
+                lines.append(
+                    u'  %s: M5十字通孔 + M6攻丝 距底面%.0fmm/深%.0fmm  %s'
+                    % (label, z, tap_depth, coord))
             else:
-                label = u'孔%d' % (i + 1)
-            lines.append(
-                u'  %s: %s距底面%.0fmm 深%.0fmm  (x=%.0f, y=%.0f, z=%.0f)'
-                % (label, d, z, depth, h, h, z))
-        return u'\n'.join(lines)
+                label = u'第%d层' % (i + 1)
+                lines.append(
+                    u'  %s: M5十字通孔  %s'
+                    % (label, coord))
+        
+        total = len(positions)
+        return u'Z柱 %d层：每层M5十字通孔，顶底M6攻丝\n%s' % (total, '\n'.join(lines))
     return ''
 
 
