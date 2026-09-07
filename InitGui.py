@@ -5,7 +5,8 @@ All commands live in the workbench toolbar — no menu bar entries.
 """
 
 import FreeCAD
-import FreeCADGui
+from FreeCAD import Gui
+from FreeCADGui import Workbench
 import os
 
 _ICON_FRAME = os.path.join(os.path.dirname(__file__), 'icons', 'frame_xpm.xpm')
@@ -51,7 +52,7 @@ class EditFrameCommand:
         return True
 
 
-class AlumFrameWorkbench(FreeCADGui.Workbench):
+class AlumFrameWorkbench(Workbench):
     """Aluminum frame generator workbench — commands live in the toolbar."""
 
     def __init__(self):
@@ -77,7 +78,7 @@ class AlumFrameWorkbench(FreeCADGui.Workbench):
         return 'Gui::PythonWorkbench'
 
 
-FreeCADGui.addCommand('AlumFrame_NewFrame', NewFrameCommand())
-FreeCADGui.addCommand('AlumFrame_EditFrame', EditFrameCommand())
-FreeCADGui.addWorkbench(AlumFrameWorkbench())
+Gui.addCommand('AlumFrame_NewFrame', NewFrameCommand())
+Gui.addCommand('AlumFrame_EditFrame', EditFrameCommand())
+Gui.addWorkbench(AlumFrameWorkbench())
 FreeCAD.Console.PrintMessage(u'AlumFrame workbench loaded\n')
