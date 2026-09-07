@@ -6,53 +6,10 @@ All commands live in the workbench toolbar — no menu bar entries.
 
 import FreeCAD
 import FreeCADGui
+import os
 
-_ICON_FRAME = """/* XPM */
-static char * frame_xpm[] = {
-"16 16 2 1",
-"  c None",
-"# c #e0812f",
-"################",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"################"};
-"""
-
-_ICON_EDIT = """/* XPM */
-static char * edit_xpm[] = {
-"16 16 3 1",
-"  c None",
-"# c #e0812f",
-"o c #3584d4",
-"################",
-"#              #",
-"#     oooo     #",
-"#     oooo     #",
-"#     oooo     #",
-"#     oooo     #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"#              #",
-"################"};
-"""
+_ICON_FRAME = os.path.join(os.path.dirname(__file__), 'icons', 'frame_xpm.xpm')
+_ICON_EDIT = os.path.join(os.path.dirname(__file__), 'icons', 'edit_xpm.xpm')
 
 
 def _open_panel(edit_selected=False):
