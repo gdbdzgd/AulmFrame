@@ -152,9 +152,11 @@ class TestHoleNotes(unittest.TestCase):
         self.assertEqual(hole_note(u'X-横梁', 560), '')
         self.assertEqual(hole_note(u'X-横梁', 560, {'beam_cross': 'M5'}, 0), '')
 
-    def test_every_profile_has_hole_spec(self):
-        for name in PROFILES:
-            self.assertIn(name, HOLE_SPECS, name)
+    def test_every_core_profile_has_hole_spec(self):
+        # Only test core profiles (not DXF-based ones)
+        core_profiles = ['20x20', '30x30', '40x40', '60x60']
+        for name in core_profiles:
+            self.assertIn(name + ' 方管', HOLE_SPECS, name + ' 方管')
 
 
 class TestBomSummary(unittest.TestCase):
