@@ -15,20 +15,39 @@ PROFILES = {
     '60x60 方管': {'type': 'square', 'w': 60, 'h': 60},
 }
 
-# DXF-based profiles from MISUMI resource directory
+# DXF-based profiles from MISUMI resource directory (override hardcoded profiles)
 try:
-    from .profiles.dxf_parser import get_all_profiles as _get_all_profiles
+    from .profiles.dxf_parser import get_profile_for_size, get_all_profiles as _get_all_profiles
     DXF_PROFILES = _get_all_profiles()
-    if DXF_PROFILES:
-        for p in DXF_PROFILES:
-            key = p['profile'] + ' 方管'
-            if key not in PROFILES:
+    
+    # Override all core profiles with DXF type
+    for size in ['20x20', '30x30', '40x40', '60x60']:
+        key = size + ' 方管'
+        if key in PROFILES:
+            p = get_profile_for_size(size)
+            if p:
                 PROFILES[key] = {
                     'type': 'dxf',
-                    'w': p['profile_size'],
-                    'h': p['profile_size'],
+                    'w': p['width'],
+                    'h': p['height'],
                     'dxf': p['dxf_file'],
                 }
+    
+    # Use hfs8-4040.dxf specifically for 40x40
+    hfs8_path = '/home/gdzhang/gits/AulmFrame/profiles/dxf/hfs8-4040.dxf'
+    import os
+    if os.path.exists(hfs8_path):
+        from .profiles.dxf_parser import parse_dxf_tokens, extract_entities, get_profile_bbox
+        tokens = parse_dxf_tokens(hfs8_path)
+        entities = extract_entities(tokens)
+        bbox = get_profile_bbox(entities)
+        if bbox:
+            PROFILES['40x40 方管'] = {
+                'type': 'dxf',
+                'w': bbox['width'],
+                'h': bbox['height'],
+                'dxf': hfs8_path,
+            }
 except Exception:
     DXF_PROFILES = []
 

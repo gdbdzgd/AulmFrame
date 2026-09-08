@@ -2,8 +2,7 @@
 """
 DXF Profile Parser for Aluminum Frame Generator.
 
-Parses 2D DXF files from MISUMI/铝型材-米思米 resources and
-provides profile geometry for beam generation.
+Parses 2D DXF files and extracts the main profile contour.
 """
 
 import os
@@ -55,68 +54,81 @@ def extract_entities(tokens):
 def get_profile_bbox(entities):
     """Get bounding box of profile from entities."""
     xs, ys = [], []
-    circles = []
-    arcs = []
+    lines = []
     
     for e in entities:
-        etype = e.get('type')
-        if etype == 'LINE':
+        if e.get('type') == 'LINE':
             x1 = float(e.get('10', 0))
             y1 = float(e.get('20', 0))
             x2 = float(e.get('11', 0))
             y2 = float(e.get('21', 0))
-            # Filter out extreme values (likely annotation errors)
-            if abs(x1) < 5000 and abs(y1) < 5000:
+            # Filter extreme values
+            if abs(x1) < 5000 and abs(y1) < 5000 and abs(x2) < 5000 and abs(y2) < 5000:
                 xs.extend([x1, x2])
                 ys.extend([y1, y2])
-        elif etype == 'CIRCLE':
-            cx = float(e.get('10', 0))
-            cy = float(e.get('20', 0))
-            r = float(e.get('40', 0))
-            circles.append((cx, cy, r))
-        elif etype == 'ARC':
-            cx = float(e.get('10', 0))
-            cy = float(e.get('20', 0))
-            r = float(e.get('40', 0))
-            thetas = [float(e.get('50', 0)), float(e.get('51', 0))]
-            arcs.append((cx, cy, r, thetas))
+                lines.append((x1, y1, x2, y2))
     
-    if xs:
+    if not xs:
+        return None
+    
+    # Find centroid
+    cx = sum(xs) / len(xs)
+    cy = sum(ys) / len(ys)
+    
+    # Find distance of each point from centroid
+    dists = []
+    for x, y in zip(xs, ys):
+        d = ((x - cx)**2 + (y - cy)**2)**0.5
+        dists.append(d)
+    
+    # Use 80% closest points for bbox
+    dists_sorted = sorted(dists)
+    cutoff = dists_sorted[int(len(dists_sorted) * 0.8)]
+    
+    # Filter lines within cutoff
+    filtered = []
+    for l in lines:
+        x1, y1, x2, y2 = l
+        d1 = ((x1 - cx)**2 + (y1 - cy)**2)**0.5
+        d2 = ((x2 - cx)**2 + (y2 - cy)**2)**0.5
+        if d1 <= cutoff and d2 <= cutoff:
+            filtered.append(l)
+    
+    # Get filtered bbox
+    if filtered:
+        x_coords = [l[0] for l in filtered] + [l[2] for l in filtered]
+        y_coords = [l[1] for l in filtered] + [l[3] for l in filtered]
         return {
-            'width': max(xs) - min(xs),
-            'height': max(ys) - min(ys),
-            'x_min': min(xs),
-            'x_max': max(xs),
-            'y_min': min(ys),
-            'y_max': max(ys),
-            'circles': circles,
-            'arcs': arcs,
-            'lines': [(float(e.get('10', 0)), float(e.get('20', 0)),
-                      float(e.get('11', 0)), float(e.get('21', 0)))
-                      for e in entities if e.get('type') == 'LINE']
+            'width': max(x_coords) - min(x_coords),
+            'height': max(y_coords) - min(y_coords),
+            'x_min': min(x_coords),
+            'x_max': max(x_coords),
+            'y_min': min(y_coords),
+            'y_max': max(y_coords),
+            'lines': filtered
         }
-    return None
+    
+    return {
+        'width': max(xs) - min(xs),
+        'height': max(ys) - min(ys),
+        'x_min': min(xs),
+        'x_max': max(xs),
+        'y_min': min(ys),
+        'y_max': max(ys),
+        'lines': lines
+    }
 
 
 def get_profile_for_size(size, dxf_dir=None):
-    """Get profile info for a given size string like '20x20', '30x30', etc.
-    
-    Parameters
-    ----------
-    size : str
-        Profile size like '20x20', '40x40'
-    dxf_dir : str, optional
-        Path to DXF directory
-    """
+    """Get profile info for a given size string like '20x20', '30x30', etc."""
     if dxf_dir is None:
         dxf_dir = os.path.join(os.path.dirname(__file__), 'dxf')
     
-    # Map size to DXF filename
     name_map = {
         '20x20': 'nfs5-2020.dxf',
         '30x30': 'LCF8-3030.dxf',
-        '40x40': 'nfs5-4040.dxf',
-        '60x60': None,  # no 6060 DXF available
+        '40x40': 'hfs8-4040.dxf',
+        '60x60': None,
     }
     
     size_lower = size.lower().replace('方管', '').strip()
@@ -153,26 +165,24 @@ def get_all_profiles(dxf_dir=None):
     if not os.path.exists(dxf_dir):
         return profiles
     
+    seen = {}
     for fname in sorted(os.listdir(dxf_dir)):
         if not fname.endswith('.dxf'):
             continue
         
-        # Extract size from filename like nfs5-2020.dxf -> 20x20
-        # or LCF8-3030.dxf -> 30x30
         base = fname.replace('.dxf', '')
-        
-        # Try common patterns: LCF8-3030 -> 30x30, nfs5-2020 -> 20x20
         size_match = re.search(r'(\d{2})x?(\d{2})', base)
         if size_match:
             size = f"{size_match.group(1)}x{size_match.group(2)}"
         else:
-            size_match = re.search(r'(\d{2})(\d{2})$', base)
-            if size_match:
-                size = f"{size_match.group(1)}x{size_match.group(2)}"
-            else:
-                continue
+            continue
         
         p = get_profile_for_size(size, dxf_dir)
         if p:
-            profiles.append(p)
+            if size not in seen:
+                seen[size] = p
+                profiles.append(p)
+            elif len(p['bbox'].get('lines', [])) > len(seen[size]['bbox'].get('lines', [])):
+                seen[size] = p
+                profiles = [x for x in profiles if x['profile'] != size] + [p]
     return profiles

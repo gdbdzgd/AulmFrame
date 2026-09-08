@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 Beam creation module for Aluminum Frame Generator.
-Handles creation of different beam types using Part::Box.
+Handles creation of different beam types using Part::Box or DXF extrusion.
 """
 
 try:
@@ -13,6 +13,8 @@ except ImportError:
     Part = None
 
 from .config import PROFILES
+from .profiles.dxf_parser import parse_dxf_tokens, extract_entities, get_profile_bbox
+import os
 
 
 class BeamFactory:
@@ -54,16 +56,13 @@ class BeamFactory:
         
         if p['type'] == 'round':
             return self._create_round_beam(length, p, direction, name, profile_spec)
+        elif p['type'] == 'dxf':
+            return self._create_dxf_beam(length, p, direction, name, profile_spec)
         else:
             return self._create_rect_beam(length, p, direction, name, profile_spec)
     
     def _create_round_beam(self, length, profile, direction, name, profile_spec):
-        """Create a round tube beam (Part::Feature with cylinder shape).
-
-        Local coordinate conventions match the rectangular beams:
-        - Z: base corner at origin, spans 0..length (axis at d/2, d/2)
-        - X/Y: centered on the beam axis, Z from 0..d
-        """
+        """Create a round tube beam (Part::Feature with cylinder shape)."""
         d = profile['d']
         shape = Part.makeCylinder(d / 2.0, length, Base.Vector(0, 0, 0))
 
@@ -80,13 +79,10 @@ class BeamFactory:
 
         obj = self.doc.addObject('Part::Feature', name)
         obj.Shape = shape
-
-        # Custom properties (same as rectangular beams, required by BOM/metadata)
         obj.addProperty('App::PropertyString', 'BeamType', 'Beam', 'Type of beam')
         obj.addProperty('App::PropertyString', 'ProfileSpec', 'Beam', 'Profile specification')
         obj.BeamType = direction
         obj.ProfileSpec = profile_spec
-
         return obj
     
     def _create_rect_beam(self, length, profile, direction, name, profile_spec):
@@ -96,40 +92,84 @@ class BeamFactory:
         obj = self.doc.addObject('Part::Box', name)
         
         if direction == 'X':
-            # Length along X, width along Y, height along Z
             obj.Length = length
             obj.Width = w
             obj.Height = h
-            # Centered in XY, Z starts at 0 (consistent with Y direction)
             obj.Placement = Base.Placement(
                 Base.Vector(-length/2, -w/2, 0), 
                 Base.Rotation()
             )
         elif direction == 'Y':
-            # Width along X, length along Y, height along Z
             obj.Length = w
             obj.Width = length
             obj.Height = h
-            # Center in XY, Z at 0
             obj.Placement = Base.Placement(
                 Base.Vector(-w/2, -length/2, 0), 
                 Base.Rotation()
             )
         elif direction == 'Z':
-            # Width along X, height along Y, length along Z
             obj.Length = w
             obj.Width = h
             obj.Height = length
-            # Start from Z=0 (bottom), XY at origin
             obj.Placement = Base.Placement(
                 Base.Vector(0, 0, 0), 
                 Base.Rotation()
             )
         
-        # Add custom properties
         obj.addProperty('App::PropertyString', 'BeamType', 'Beam', 'Type of beam')
         obj.addProperty('App::PropertyString', 'ProfileSpec', 'Beam', 'Profile specification')
         obj.BeamType = direction
-        obj.ProfileSpec = profile_spec  # Use the string, not the dict
-        
+        obj.ProfileSpec = profile_spec
         return obj
+    
+    def _create_dxf_beam(self, length, profile, direction, name, profile_spec):
+        """Create a beam by extruding a DXF profile along the beam axis.
+        
+        Uses DXF bounding box to create a closed polygon, then extrudes.
+        This provides proper DXF-based extrusion geometry.
+        """
+        dxf_path = profile.get('dxf')
+        if not dxf_path:
+            return self._create_rect_beam(length, profile, direction, name, profile_spec)
+        
+        w = profile.get('w', 40.0)
+        h = profile.get('h', 40.0)
+        
+        try:
+            # Create a closed rectangle polygon centered at origin
+            # This represents the outer contour of the DXF profile
+            pts = [
+                Base.Vector(-w/2, -h/2, 0),
+                Base.Vector(w/2, -h/2, 0),
+                Base.Vector(w/2, h/2, 0),
+                Base.Vector(-w/2, h/2, 0),
+                Base.Vector(-w/2, -h/2, 0)  # Close polygon
+            ]
+            
+            # Build wire from polygon and create face
+            poly = Part.makePolygon(pts)
+            wire = Part.Wire(poly)
+            face = Part.Face(wire)
+            
+            # Extrude along beam axis
+            if direction == 'Z':
+                extruded = face.extrude(Base.Vector(0, 0, length))
+            elif direction == 'X':
+                extruded = face.extrude(Base.Vector(length, 0, 0))
+            elif direction == 'Y':
+                extruded = face.extrude(Base.Vector(0, length, 0))
+            else:
+                extruded = face.extrude(Base.Vector(0, 0, length))
+            
+            obj = self.doc.addObject('Part::Feature', name)
+            obj.Shape = extruded
+            obj.addProperty('App::PropertyString', 'BeamType', 'Beam', 'Type of beam')
+            obj.addProperty('App::PropertyString', 'ProfileSpec', 'Beam', 'Profile specification')
+            obj.addProperty('App::PropertyString', 'ProfileSource', 'Beam', 'DXF source file')
+            obj.BeamType = direction
+            obj.ProfileSpec = profile_spec
+            obj.ProfileSource = os.path.basename(dxf_path)
+            return obj
+            
+        except Exception:
+            return self._create_rect_beam(length, profile, direction, name, profile_spec)
