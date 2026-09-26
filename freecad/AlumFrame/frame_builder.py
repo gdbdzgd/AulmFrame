@@ -15,6 +15,7 @@ except ImportError:
     Draft = None
     Part = None
 
+from .i18n import tr
 from .config import (PROFILES, HOLE_SPECS, hole_specs_for_profile,
                      OBJ_FRAME, OBJ_PARAMS, OBJ_BOM,
                      OBJ_DIMENSIONS, OBJ_X_BASE, OBJ_Y_BASE, OBJ_Z_BASE,
@@ -744,25 +745,21 @@ class FrameBuilder:
             bore_txt = spec.get('center_bore')
             if has_end_tap:
                 notes[key].append(
-                    u'端面攻丝【两端，每端1处，共2处/根】：'
-                    u'%s 底孔Ø%g 深%.0f，沿梁轴攻入截面中心（中心孔）'
+                    tr(u'端面攻丝【两端，每端1处，共2处/根】：%s 底孔Ø%g 深%.0f，沿梁轴攻入截面中心（中心孔）')
                     % (tap, bore_txt or tap_dia, tap_depth))
             if machining == 'end_through+post_through':
                 notes[key].append(
-                    u'打孔【两端，每端1处】：距梁端%.0f，垂直于梁轴、水平方向，'
-                    u'Ø%g 贯通截面，配槽内螺母锁紧'
+                    tr(u'打孔【两端，每端1处】：距梁端%.0f，垂直于梁轴、水平方向，Ø%g 贯通截面，配槽内螺母锁紧')
                     % (params.get('nut_offset', 20.0), clearance))
             if machining == 'end_tap+side_access+post_through':
                 notes[key].append(
-                    u'工艺孔【两端，每端1处】：距梁端%.0f，从顶面垂直向下、'
-                    u'Ø%.1f 深%.0f（只穿透顶面一层，通入槽内用于拧紧）'
+                    tr(u'工艺孔【两端，每端1处】：距梁端%.0f，从顶面垂直向下、Ø%.1f 深%.0f（只穿透顶面一层，通入槽内用于拧紧）')
                     % (params.get('side_offset', 18.0),
                        params.get('access_d', 6.8),
                        params.get('hole_depth', v / 2.0 + 1.0)))
             if machining == 'anchor_hole+post_through':
                 notes[key].append(
-                    u'锚孔【两端，每端1处】：距梁端%.0f，从顶面垂直向下、'
-                    u'Ø%g 深%.0f（只穿透顶面一层，槽内装锚件）'
+                    tr(u'锚孔【两端，每端1处】：距梁端%.0f，从顶面垂直向下、Ø%g 深%.0f（只穿透顶面一层，槽内装锚件）')
                     % (params.get('anchor_offset', 15.0),
                        clearance, params.get('hole_depth', v / 2.0 + 1.0)))
 
@@ -780,10 +777,9 @@ class FrameBuilder:
                     holes.append({'pos': (zx, zy, gz), 'axis': (0.0, 1.0, 0.0),
                                   'radius': r_clr, 'depth': py + 4.0,
                                   'kind': 'through'})
-                z_txt = u'、'.join(u'z=%.0f' % z for z in layers)
+                z_txt = tr(u'、').join(u'z=%.0f' % z for z in layers)
                 notes['Z'].append(
-                    u'打孔【每柱每层 2 处，X向+Y向各1】：沿梁轴方向水平贯穿，'
-                    u'Ø%g 间隙孔（螺栓通过）；层高 %s，共 %d 层'
+                    tr(u'打孔【每柱每层 2 处，X向+Y向各1】：沿梁轴方向水平贯穿，Ø%g 间隙孔（螺栓通过）；层高 %s，共 %d 层')
                     % (clearance, z_txt, len(layers)))
             if machining == 'post_end_tap':
                 holes.append({'pos': (zx, zy, tap_depth / 2.0),
@@ -793,8 +789,7 @@ class FrameBuilder:
                               'axis': (0.0, 0.0, 1.0), 'radius': r_tap,
                               'depth': tap_depth, 'kind': 'tap'})
                 notes['Z'].append(
-                    u'端面攻丝【两端，每端1处】：柱底沿 +Z 向上攻入、'
-                    u'柱顶沿 -Z 向下攻入，%s 底孔Ø%g 深%.0f'
+                    tr(u'端面攻丝【两端，每端1处】：柱底沿 +Z 向上攻入、柱顶沿 -Z 向下攻入，%s 底孔Ø%g 深%.0f')
                     % (tap, spec.get('center_bore') or tap_dia, tap_depth))
             if holes:
                 _zvals = sorted(set(round(h['pos'][2] - _b.ZMin, 1)

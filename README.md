@@ -1,5 +1,7 @@
 # AlumFrame — FreeCAD 铝型材框架生成器
 
+[中文](README.md) | [English](README_EN.md)
+
 FreeCAD 工作台插件，用于快速创建参数化铝型材方管框架，自动生成 BOM（含每根型材打孔/攻丝坐标）和尺寸标注。
 
 ---
@@ -13,6 +15,7 @@ FreeCAD 工作台插件，用于快速创建参数化铝型材方管框架，自
 | 尺寸标注 | `Measure::MeasureLength`，含柱距/净空/总外形 |
 | 编辑已有框架 | 选中 Frame → Edit Frame，面板预填当前参数 |
 | CSV 导出 | BOM 可导出 CSV，方便采购 |
+| 中英文界面 | 菜单/面板/提示/**BOM/图纸文字**跟随 FreeCAD 语言（中文或 English），见 `i18n.py` |
 
 ---
 
@@ -121,8 +124,9 @@ Z 轴：竖直向上
 
 - 使用内置 **A2 横向带边框模板**（`templates/A2_Landscape.svg`，594×420）：
   文字与视图均限制在内框（22mm 边距）内，并**避让右下角标题栏**；
-- **所有文字标注左对齐**：注释内 ASCII 转全角（等宽），并给每块追加一条等长的
-  横线使各块宽度完全一致，共用同一 X → X/Y/Z 左边缘精确对齐（实测均 22.01mm）；
+- **所有文字标注左对齐**（中文界面）：注释内 ASCII 转全角（等宽），并给每块追加
+  一条等长的横线使各块宽度完全一致，共用同一 X → X/Y/Z 左边缘精确对齐
+  （实测均 22.01mm）；英文界面下注释本身为等宽 ASCII，直接对齐；
   （此前"导出实测反馈"方案会在 HLR 计算期间重算导致崩溃，已移除）
 - **标题栏字段（中文标签）自动填写**：规格(如 `40x40 E4040`)、比例(如 `1:2.3`)、
   图号、材料、连接方式；数值写入每帧专用模板文件
@@ -144,7 +148,9 @@ Z 轴：竖直向上
   - 尺寸数值创建后自动校验（`getRawValue` 与期望值比对，超差即删除）；
   - 子元素名通过 `getEdgeByIndex` / `getVertexByIndex` 直接解析（模型坐标），
     不依赖名字顺序猜测；标注位置做了 TechDraw 导出偏移补偿与图框/标题栏避让；
-- 文字标注：部件、**规格、长度、数量**、材料、连接方式、**打孔方式**（孔位/方向/孔径/深度）。
+- 文字标注：部件、**规格、长度、数量**、材料、连接方式、**打孔方式**（孔位/方向/孔径/深度）；
+- **图纸文字跟随界面语言**：标题栏（图名/规格/比例/图号/材料/连接）、注释、尺寸由
+  `i18n.py` 输出中文或英文；英文界面下注释保持 ASCII 等宽对齐；
 
 页面对象以 `TD_` 前缀命名，重建时按「先解绑视图 → 删视图 → 最后删页」的顺序安全清理。
 
@@ -208,12 +214,17 @@ Z柱 3层：每层M5十字通孔，顶底M6攻丝
 ## 安装
 
 ```bash
-# 1. 将仓库克隆到 FreeCAD 插件目录
-git clone git@github.com:gdbdzgd/AulmFrame.git ~/.FreeCAD/Mod/AlumFrame
+# 1. 将仓库克隆到 FreeCAD 插件目录（FreeCAD 1.1 用户目录示例）
+git clone git@github.com:gdbdzgd/AulmFrame.git \
+    ~/.local/share/FreeCAD/v1-1/Mod/AlumFrame
 
 # 或者创建软链接（开发模式）
-ln -s /path/to/repo ~/.FreeCAD/Mod/AlumFrame
+ln -s /path/to/repo ~/.local/share/FreeCAD/v1-1/Mod/AlumFrame
 ```
+
+> 插件采用 FreeCAD **现代命名空间布局**（`freecad/AlumFrame/`，`init_gui.py`
+> 入口，不修改 `sys.path`），需要 **FreeCAD ≥ 1.1**（见 package.xml 的
+> `<freecadmin>`）。
 
 重启 FreeCAD 后，工具栏/菜单出现以下 **铝型材框架** 命令：
 
@@ -259,6 +270,7 @@ export_bom_csv(beams, '/tmp/bom.csv', material='Aluminum 6061',
 无需 FreeCAD 即可运行：
 
 ```bash
+cd AulmFrame          # 仓库根目录
 python3 -m unittest discover tests -v
 ```
 
@@ -270,28 +282,39 @@ python3 -m unittest discover tests -v
 
 ```
 AulmFrame/
-├── __init__.py           # make_frame() 入口
-├── config.py             # 型材规格、打孔规格、对象名常量
-├── position_calculator.py # 锚点/梁长/间距公式
-├── beam_factory.py       # 梁几何体创建（Part::Box / DXF 草图拉伸）
-├── frame_builder.py      # 框架编排（组装梁+立柱+阵列+参数表）
-├── bom.py                # BOM 电子表格 + 打孔说明 + CSV 导出
-├── measurements.py       # 尺寸标注（Measure::MeasureLength）
-├── Gui.py                # 任务面板（新建/编辑）
-├── InitGui.py            # 工作台入口
-├── package.xml           # FreeCAD 插件元数据
+AulmFrame/
+├── package.xml           # FreeCAD 插件元数据（现代布局 manifest）
+├── README.md             # 中文说明
+├── README_EN.md          # English README
 ├── LICENSE               # LGPL-2.1-or-later
-├── connections.py        # 连接方式注册表（打孔工艺/五金）
-├── profiles/
-│   ├── dxf_parser.py     # DXF 轮廓提取（LINE/ARC/CIRCLE → 闭合环）
-│   ├── extrusion_profiles.py  # 参数化标准 T 型槽截面生成器
-│   └── dxf/              # MISUMI 2D 截面资源
+├── freecad/
+│   └── AlumFrame/        # 命名空间包（现代布局，无 sys.path 修改）
+│       ├── __init__.py           # make_frame() 入口
+│       ├── init_gui.py           # 工作台/命令注册（GUI 入口）
+│       ├── gui.py                # 任务面板（新建/编辑）
+│       ├── i18n.py               # 运行时中英文翻译（tr()）
+│       ├── config.py             # 型材规格、打孔规格、对象名常量
+│       ├── position_calculator.py # 锚点/梁长/间距公式
+│       ├── beam_factory.py       # 梁几何体创建（Part::Box / DXF 草图拉伸）
+│       ├── frame_builder.py      # 框架编排（组装梁+立柱+阵列+参数表）
+│       ├── bom.py                # BOM 电子表格 + 打孔说明 + CSV 导出
+│       ├── measurements.py       # 尺寸标注（Measure::MeasureLength）
+│       ├── connections.py        # 连接方式注册表（打孔工艺/五金）
+│       ├── techdraw_bom.py       # TechDraw A2 图纸与尺寸标注
+│       ├── templates/            # A2 横向模板
+│       ├── icons/                # 工作台图标
+│       └── profiles/
+│           ├── dxf_parser.py     # DXF 轮廓提取（LINE/ARC/CIRCLE → 闭合环）
+│           ├── extrusion_profiles.py  # 参数化标准 T 型槽截面生成器
+│           └── dxf/              # MISUMI 2D 截面资源
 ├── tests/
 │   ├── test_position_calculator.py  # 位置/打孔/BOM 单元测试
 │   ├── test_dxf_parser.py           # 轮廓提取单元测试
 │   ├── test_extrusion_profiles.py   # 参数化尺寸表单元测试
-│   └── test_connections.py          # 连接方式注册表测试
-└── README.md
+│   ├── test_connections.py          # 连接方式注册表测试
+│   └── test_i18n.py                 # 中英文翻译覆盖测试
+├── README.md             # 中文说明
+└── README_EN.md          # English README
 ```
 
 ---

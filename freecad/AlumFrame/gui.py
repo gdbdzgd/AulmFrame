@@ -23,6 +23,7 @@ import FreeCAD
 import FreeCADGui
 
 from .config import PROFILES
+from .i18n import tr
 from .connections import METHODS as CONNECTION_METHODS, METHOD_ORDER
 from . import make_frame, get_bom_summary, export_bom_csv
 from .frame_builder import FrameBuilder
@@ -36,7 +37,7 @@ class AlumFrameTaskPanel:
             raise RuntimeError('PySide/PySide2/PySide6 not available')
 
         self.form = QtWidgets.QWidget()
-        self.form.setWindowTitle(u'铝型材框架生成器')
+        self.form.setWindowTitle(tr(u'铝型材框架生成器'))
         self._target_doc_name = None
         self._last_beams = None
         self._build_ui()
@@ -50,7 +51,7 @@ class AlumFrameTaskPanel:
         layout.setSpacing(10)
         layout.setContentsMargins(10, 10, 10, 10)
 
-        title = QtWidgets.QLabel(u'<h3>铝型材框架生成器</h3>')
+        title = QtWidgets.QLabel(tr(u'<h3>铝型材框架生成器</h3>'))
         title.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(title)
 
@@ -60,7 +61,7 @@ class AlumFrameTaskPanel:
         layout.addWidget(self.target_label)
 
         # Parameters group
-        params_group = QtWidgets.QGroupBox(u'参数设置')
+        params_group = QtWidgets.QGroupBox(tr(u'参数设置'))
         params_layout = QtWidgets.QFormLayout(params_group)
         params_layout.setSpacing(5)
 
@@ -68,47 +69,47 @@ class AlumFrameTaskPanel:
         for k in sorted(PROFILES.keys()):
             # Round profiles are not supported yet - only offer square/rect
             if PROFILES[k]['type'] != 'round':
-                self.profile_combo.addItem(k)
-        idx = self.profile_combo.findText(u'40x40 方管')
+                self.profile_combo.addItem(tr(k), k)
+        idx = self.profile_combo.findData('40x40 方管')
         if idx >= 0:
             self.profile_combo.setCurrentIndex(idx)
-        params_layout.addRow(u'型材规格:', self.profile_combo)
+        params_layout.addRow(tr(u'型材规格:'), self.profile_combo)
 
         self.length_spin = QtWidgets.QDoubleSpinBox()
         self.length_spin.setRange(100, 20000)
         self.length_spin.setValue(600)
         self.length_spin.setSuffix(' mm')
-        params_layout.addRow(u'长度 (X):', self.length_spin)
+        params_layout.addRow(tr(u'长度 (X):'), self.length_spin)
 
         self.width_spin = QtWidgets.QDoubleSpinBox()
         self.width_spin.setRange(100, 20000)
         self.width_spin.setValue(400)
         self.width_spin.setSuffix(' mm')
-        params_layout.addRow(u'宽度 (Y):', self.width_spin)
+        params_layout.addRow(tr(u'宽度 (Y):'), self.width_spin)
 
         self.height_spin = QtWidgets.QDoubleSpinBox()
         self.height_spin.setRange(100, 20000)
         self.height_spin.setValue(500)
         self.height_spin.setSuffix(' mm')
-        params_layout.addRow(u'高度 (Z):', self.height_spin)
+        params_layout.addRow(tr(u'高度 (Z):'), self.height_spin)
 
         self.z_layers_spin = QtWidgets.QSpinBox()
         self.z_layers_spin.setRange(1, 20)
         self.z_layers_spin.setValue(1)
-        params_layout.addRow(u'Z层数:', self.z_layers_spin)
+        params_layout.addRow(tr(u'Z层数:'), self.z_layers_spin)
 
         # Section orientation (meaningful for rectangular profiles only)
         self.post_dir_combo = QtWidgets.QComboBox()
-        self.post_dir_combo.addItem(u'第一尺寸(a)沿X', 'a')
-        self.post_dir_combo.addItem(u'第二尺寸(b)沿X', 'b')
-        self.post_dir_combo.setToolTip(u'矩形立柱截面方向：哪个尺寸沿框架X轴')
-        params_layout.addRow(u'立柱方向:', self.post_dir_combo)
+        self.post_dir_combo.addItem(tr(u'第一尺寸(a)沿X'), 'a')
+        self.post_dir_combo.addItem(tr(u'第二尺寸(b)沿X'), 'b')
+        self.post_dir_combo.setToolTip(tr(u'矩形立柱截面方向：哪个尺寸沿框架X轴'))
+        params_layout.addRow(tr(u'立柱方向:'), self.post_dir_combo)
 
         self.beam_dir_combo = QtWidgets.QComboBox()
-        self.beam_dir_combo.addItem(u'第二尺寸(b)竖直', 'b')
-        self.beam_dir_combo.addItem(u'第一尺寸(a)竖直', 'a')
-        self.beam_dir_combo.setToolTip(u'矩形横梁截面方向：哪个尺寸竖直（X/Y梁共用）')
-        params_layout.addRow(u'横梁竖直:', self.beam_dir_combo)
+        self.beam_dir_combo.addItem(tr(u'第二尺寸(b)竖直'), 'b')
+        self.beam_dir_combo.addItem(tr(u'第一尺寸(a)竖直'), 'a')
+        self.beam_dir_combo.setToolTip(tr(u'矩形横梁截面方向：哪个尺寸竖直（X/Y梁共用）'))
+        params_layout.addRow(tr(u'横梁竖直:'), self.beam_dir_combo)
 
         self.connection_combo = QtWidgets.QComboBox()
         for cid in METHOD_ORDER:
@@ -118,79 +119,79 @@ class AlumFrameTaskPanel:
         if _di >= 0:
             self.connection_combo.setCurrentIndex(_di)
         self.connection_combo.setToolTip(
-            u'连接方式：决定端面攻丝/侧孔/贯穿孔等加工')
-        params_layout.addRow(u'连接方式:', self.connection_combo)
+            tr(u'连接方式：决定端面攻丝/侧孔/贯穿孔等加工'))
+        params_layout.addRow(tr(u'连接方式:'), self.connection_combo)
 
         self.material_edit = QtWidgets.QLineEdit('Aluminum 6061')
-        params_layout.addRow(u'材料:', self.material_edit)
+        params_layout.addRow(tr(u'材料:'), self.material_edit)
 
         self.hole_dia_spin = QtWidgets.QDoubleSpinBox()
         self.hole_dia_spin.setRange(0.0, 100.0)
         self.hole_dia_spin.setDecimals(1)
         self.hole_dia_spin.setValue(0.0)
         self.hole_dia_spin.setSuffix(' mm')
-        self.hole_dia_spin.setSpecialValueText(u'自动(推荐)')
+        self.hole_dia_spin.setSpecialValueText(tr(u'自动(推荐)'))
         self.hole_dia_spin.setToolTip(
-            u'连接孔直径；0=按型材推荐值。上限=型材宽度的一半')
-        params_layout.addRow(u'开孔孔径:', self.hole_dia_spin)
+            tr(u'连接孔直径；0=按型材推荐值。上限=型材宽度的一半'))
+        params_layout.addRow(tr(u'开孔孔径:'), self.hole_dia_spin)
 
         self.hole_depth_spin = QtWidgets.QDoubleSpinBox()
         self.hole_depth_spin.setRange(0.0, 200.0)
         self.hole_depth_spin.setDecimals(1)
         self.hole_depth_spin.setValue(0.0)
         self.hole_depth_spin.setSuffix(' mm')
-        self.hole_depth_spin.setSpecialValueText(u'自动(推荐)')
-        params_layout.addRow(u'开孔深度:', self.hole_depth_spin)
+        self.hole_depth_spin.setSpecialValueText(tr(u'自动(推荐)'))
+        params_layout.addRow(tr(u'开孔深度:'), self.hole_depth_spin)
 
         self.hole_off_spin = QtWidgets.QDoubleSpinBox()
         self.hole_off_spin.setRange(0.0, 200.0)
         self.hole_off_spin.setDecimals(1)
         self.hole_off_spin.setValue(0.0)
         self.hole_off_spin.setSuffix(' mm')
-        self.hole_off_spin.setSpecialValueText(u'自动(推荐)')
-        self.hole_off_spin.setToolTip(u'孔位距端面距离；0=按推荐值')
-        params_layout.addRow(u'孔位距端:', self.hole_off_spin)
+        self.hole_off_spin.setSpecialValueText(tr(u'自动(推荐)'))
+        self.hole_off_spin.setToolTip(tr(u'孔位距端面距离；0=按推荐值'))
+        params_layout.addRow(tr(u'孔位距端:'), self.hole_off_spin)
 
-        self.techdraw_check = QtWidgets.QCheckBox(u'生成 TechDraw 图纸（每规格一页）')
+        self.techdraw_check = QtWidgets.QCheckBox(tr(u'生成 TechDraw 图纸（每规格一页）'))
         self.techdraw_check.setChecked(True)
-        params_layout.addRow(u'出图:', self.techdraw_check)
+        params_layout.addRow(tr(u'出图:'), self.techdraw_check)
 
         layout.addWidget(params_group)
 
         # Action buttons
         row1 = QtWidgets.QHBoxLayout()
-        self.gen_btn = QtWidgets.QPushButton(u'生成 / 更新框架')
-        self.gen_btn.setToolTip(u'按当前参数生成；编辑模式下就地重建当前文档的框架')
+        self.gen_btn = QtWidgets.QPushButton(tr(u'生成 / 更新框架'))
+        self.gen_btn.setToolTip(tr(u'按当前参数生成；编辑模式下就地重建当前文档的框架'))
         self.gen_btn.clicked.connect(self._generate)
-        self.load_btn = QtWidgets.QPushButton(u'读取选中参数')
-        self.load_btn.setToolTip(u'从选中的框架（或其子对象）读取参数')
+        self.load_btn = QtWidgets.QPushButton(tr(u'读取选中参数'))
+        self.load_btn.setToolTip(tr(u'从选中的框架（或其子对象）读取参数'))
         self.load_btn.clicked.connect(self._load_selected)
         row1.addWidget(self.gen_btn)
         row1.addWidget(self.load_btn)
         layout.addLayout(row1)
 
         row2 = QtWidgets.QHBoxLayout()
-        self.new_btn = QtWidgets.QPushButton(u'新建 (重置)')
-        self.new_btn.setToolTip(u'切换到新建模式：下次生成将创建新文档')
+        self.new_btn = QtWidgets.QPushButton(tr(u'新建 (重置)'))
+        self.new_btn.setToolTip(tr(u'切换到新建模式：下次生成将创建新文档'))
         self.new_btn.clicked.connect(self._reset_new)
-        self.bom_btn = QtWidgets.QPushButton(u'导出BOM (CSV)')
-        self.bom_btn.setToolTip(u'导出物料清单到CSV文件')
+        self.bom_btn = QtWidgets.QPushButton(tr(u'导出BOM (CSV)'))
+        self.bom_btn.setToolTip(tr(u'导出物料清单到CSV文件'))
         self.bom_btn.clicked.connect(self._export_bom)
         row2.addWidget(self.new_btn)
         row2.addWidget(self.bom_btn)
         layout.addLayout(row2)
 
         # Result area
-        result_group = QtWidgets.QGroupBox(u'生成结果')
+        result_group = QtWidgets.QGroupBox(tr(u'生成结果'))
         result_layout = QtWidgets.QVBoxLayout(result_group)
-        self.result_label = QtWidgets.QLabel(u'点击"生成 / 更新框架"开始')
+        self.result_label = QtWidgets.QLabel(tr(u'点击"生成 / 更新框架"开始'))
         self.result_label.setWordWrap(True)
         self.result_label.setMinimumHeight(80)
         result_layout.addWidget(self.result_label)
         layout.addWidget(result_group)
 
         help_label = QtWidgets.QLabel(
-            u'<small><i>提示：选中框架后点"读取选中参数"可编辑已有框架</i></small>'
+            tr(u'<small><i>提示：选中框架后点"读取选中参数"可编辑已有框架</i></small>')
         )
         help_label.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(help_label)
@@ -200,7 +201,7 @@ class AlumFrameTaskPanel:
     # ========== Helpers ==========
     def _read_params(self):
         return {
-            'profile': self.profile_combo.currentText(),
+            'profile': self.profile_combo.currentData() or self.profile_combo.currentText(),
             'length': self.length_spin.value(),
             'width': self.width_spin.value(),
             'height': self.height_spin.value(),
@@ -216,7 +217,7 @@ class AlumFrameTaskPanel:
         }
 
     def _apply_params(self, p):
-        idx = self.profile_combo.findText(p.get('profile', ''))
+        idx = self.profile_combo.findData(p.get('profile', ''))
         if idx >= 0:
             self.profile_combo.setCurrentIndex(idx)
         self.length_spin.setValue(p.get('length', 600))
@@ -246,10 +247,10 @@ class AlumFrameTaskPanel:
             except Exception:
                 label = self._target_doc_name
             self.target_label.setText(
-                u'<font color="#2a7"><b>编辑模式:</b> 更新文档「%s」中的框架</font>' % label)
+                tr(u'<font color="#2a7"><b>编辑模式:</b> 更新文档「%s」中的框架</font>') % label)
         else:
             self.target_label.setText(
-                u'<font color="#777"><b>新建模式:</b> 将生成新文档</font>')
+                tr(u'<font color="#777"><b>新建模式:</b> 将生成新文档</font>'))
 
     def _set_target(self, frame_group):
         if frame_group is not None and frame_group.Document is not None:
@@ -281,14 +282,14 @@ class AlumFrameTaskPanel:
             if frame is not None:
                 self._apply_params(FrameBuilder.get_frame_params(frame))
                 self._set_target(frame)
-                self.result_label.setText(u'<font color="green">✓ 已读取选中框架参数</font>')
+                self.result_label.setText(tr(u'<font color="green">✓ 已读取选中框架参数</font>'))
                 return
         self.result_label.setText(
-            u'<font color="orange">未选中框架（请选中框架组或其任意子对象）</font>')
+            tr(u'<font color="orange">未选中框架（请选中框架组或其任意子对象）</font>'))
 
     def _reset_new(self):
         self._set_target(None)
-        self.result_label.setText(u'已重置为新建模式，点击"生成 / 更新框架"创建新文档')
+        self.result_label.setText(tr(u'已重置为新建模式，点击"生成 / 更新框架"创建新文档'))
 
     def _generate(self):
         p = self._read_params()
@@ -314,35 +315,42 @@ class AlumFrameTaskPanel:
             self._update_target_label()
 
             summary = get_bom_summary(beams)
-            lines = [u'<b>✓ 框架已生成</b>', u'<hr>', u'<b>BOM 汇总:</b>']
+            lines = [tr(u'<b>✓ 框架已生成</b>'), u'<hr>', tr(u'<b>BOM 汇总:</b>')]
             for k, v in sorted(summary.items()):
-                lines.append(u'  %s: 数量=%d, 总长=%.1fmm' % (k, v['qty'], v['length']))
+                disp = k
+                if ' (' in k:
+                    _part, _rest = k.split(' (', 1)
+                    disp = tr(_part) + ' (' + _rest
+                lines.append(tr(u'  %s: 数量=%d, 总长=%.1fmm')
+                             % (disp, v['qty'], v['length']))
             lines.append(u'<hr>')
-            lines.append(u'共 <b>%d</b> 项型材, Z层数: <b>%d</b>' % (len(beams), p['z_layers']))
+            lines.append(tr(u'共 <b>%d</b> 项型材, Z层数: <b>%d</b>') % (len(beams), p['z_layers']))
             self.result_label.setText('<br>'.join(lines))
 
             FreeCADGui.activeDocument().activeView().viewIsometric()
             FreeCADGui.SendMsgToActiveView("ViewFit")
         except Exception as e:
-            self.result_label.setText(u'<font color="red">错误: %s</font>' % str(e))
+            self.result_label.setText(tr(u'<font color="red">错误: %s</font>') % str(e))
 
     def _export_bom(self):
         if self._last_beams is None:
-            self.result_label.setText(u'<font color="orange">请先生成框架</font>')
+            self.result_label.setText(tr(u'<font color="orange">请先生成框架</font>'))
             return
         filepath, _ = QtWidgets.QFileDialog.getSaveFileName(
-            self.form, u'保存BOM', 'bom.csv', 'CSV Files (*.csv)')
+            self.form, tr(u'保存BOM'), 'bom.csv', 'CSV Files (*.csv)')
         if filepath:
             try:
                 from .config import HOLE_SPECS, PROFILES
+                _pk = (self.profile_combo.currentData()
+                       or self.profile_combo.currentText())
                 export_bom_csv(self._last_beams, filepath,
                                self.material_edit.text() or 'Aluminum 6061',
-                               hole_spec=HOLE_SPECS.get(self.profile_combo.currentText()),
-                               profile_size=PROFILES[self.profile_combo.currentText()]['w'])
+                               hole_spec=HOLE_SPECS.get(_pk),
+                               profile_size=PROFILES[_pk]['w'])
                 self.result_label.setText(
-                    u'<font color="green">✓ BOM已导出至: %s</font>' % filepath)
+                    tr(u'<font color="green">✓ BOM已导出至: %s</font>') % filepath)
             except Exception as e:
-                self.result_label.setText(u'<font color="red">导出错误: %s</font>' % str(e))
+                self.result_label.setText(tr(u'<font color="red">导出错误: %s</font>') % str(e))
 
     # ========== Task panel protocol ==========
     def getStandardButtons(self):

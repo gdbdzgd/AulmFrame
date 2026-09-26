@@ -8,9 +8,9 @@ import tempfile
 import unittest
 
 _here = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+sys.path.insert(0, os.path.dirname(_here))
 
-from AulmFrame.bom import export_bom_csv, get_bom_summary, hole_note
+from freecad.AlumFrame.bom import export_bom_csv, get_bom_summary, hole_note
 
 
 BEAMS = [

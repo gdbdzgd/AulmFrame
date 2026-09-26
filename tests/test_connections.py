@@ -6,9 +6,9 @@ import sys
 import unittest
 
 _here = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+sys.path.insert(0, os.path.dirname(_here))
 
-from AulmFrame import connections as c
+from freecad.AlumFrame import connections as c
 
 
 class TestConnectionMethods(unittest.TestCase):

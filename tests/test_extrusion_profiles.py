@@ -6,9 +6,9 @@ import sys
 import unittest
 
 _here = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+sys.path.insert(0, os.path.dirname(_here))
 
-from AulmFrame.profiles import extrusion_profiles as ep
+from freecad.AlumFrame.profiles import extrusion_profiles as ep
 
 
 class TestExtrusionTable(unittest.TestCase):
@@ -37,7 +37,7 @@ class TestExtrusionTable(unittest.TestCase):
 
 class TestTapSizing(unittest.TestCase):
     def test_taps_follow_centre_bore(self):
-        from AulmFrame.config import tap_for_center_bore
+        from freecad.AlumFrame.config import tap_for_center_bore
         self.assertEqual(tap_for_center_bore(4.2)[0], 'M5')
         self.assertEqual(tap_for_center_bore(5.0)[0], 'M6')
         self.assertEqual(tap_for_center_bore(6.8)[0], 'M8')
@@ -46,14 +46,14 @@ class TestTapSizing(unittest.TestCase):
         self.assertIsNone(tap_for_center_bore(0))
 
     def test_clearance_is_larger_than_tap(self):
-        from AulmFrame.config import tap_for_center_bore
+        from freecad.AlumFrame.config import tap_for_center_bore
         for bore in (4.2, 5.0, 6.8, 10.2):
             name, pilot, clearance = tap_for_center_bore(bore)
             nominal = float(name[1:])
             self.assertGreater(clearance, nominal)
 
     def test_profile_specs_for_parametric(self):
-        from AulmFrame.config import hole_specs_for_profile
+        from freecad.AlumFrame.config import hole_specs_for_profile
         sp = hole_specs_for_profile('40x40 E4040')
         self.assertEqual(sp['tap'], 'M12')      # bore 10.5
         self.assertAlmostEqual(sp['center_bore'], 10.5, places=3)

@@ -3,6 +3,8 @@
 BOM (Bill of Materials) module for Aluminum Frame Generator.
 """
 
+from .i18n import tr
+
 
 def create_bom_spreadsheet(doc, beams, material, z_layers,
                            hole_spec=None, profile_size=0,
@@ -36,10 +38,10 @@ def create_bom_spreadsheet(doc, beams, material, z_layers,
         Connection method id used for this frame.
     """
     bom = doc.addObject('Spreadsheet::Sheet', 'BOM')
-    bom.Label = u'BOM 规格表'
+    bom.Label = tr(u'BOM 规格表')
     
-    headers = [u'序号', u'部件', u'型材规格', u'长度(mm)', u'数量', u'材料',
-               u'总长(mm)', u'打孔说明']
+    headers = [tr(u'序号'), tr(u'部件'), tr(u'型材规格'), tr(u'长度(mm)'),
+               tr(u'数量'), tr(u'材料'), tr(u'总长(mm)'), tr(u'打孔说明')]
     for col, h in enumerate(headers):
         bom.set(chr(ord('A') + col) + '1', h)
     
@@ -52,7 +54,7 @@ def create_bom_spreadsheet(doc, beams, material, z_layers,
     total_len = 0
     for idx, ((part, profile, length), qty) in enumerate(sorted(agg.items()), 1):
         bom.set('A' + str(row), str(idx))
-        bom.set('B' + str(row), part)
+        bom.set('B' + str(row), tr(part))
         bom.set('C' + str(row), profile)
         bom.set('D' + str(row), str(length))
         bom.set('E' + str(row), str(qty))
@@ -70,22 +72,22 @@ def create_bom_spreadsheet(doc, beams, material, z_layers,
         row += 1
     
     bom.set('A' + str(row), '')
-    bom.set('B' + str(row), u'合计')
+    bom.set('B' + str(row), tr(u'合计'))
     bom.set('G' + str(row), str(total_len))
     
     row += 2
-    bom.set('A' + str(row), u'外形尺寸')
-    bom.set('B' + str(row), u'Z层数: %d' % z_layers)
+    bom.set('A' + str(row), tr(u'外形尺寸'))
+    bom.set('B' + str(row), tr(u'Z层数: %d') % z_layers)
     if connection:
         row += 1
-        bom.set('A' + str(row), u'连接方式')
+        bom.set('A' + str(row), tr(u'连接方式'))
         bom.set('B' + str(row), connection)
 
     if hardware:
         row += 2
-        bom.set('A' + str(row), u'连接五金')
-        bom.set('B' + str(row), u'名称')
-        bom.set('C' + str(row), u'数量')
+        bom.set('A' + str(row), tr(u'连接五金'))
+        bom.set('B' + str(row), tr(u'名称'))
+        bom.set('C' + str(row), tr(u'数量'))
         row += 1
         for name, qty in hardware:
             bom.set('B' + str(row), name)
@@ -139,9 +141,7 @@ def hole_note(part, length, hole_spec=None, profile_size=0,
             coord2 = '(x=%.0f, y=%.0f, z=%.0f)' % (h, p2, h)
         
         return (
-            u'每根2处攻丝（沿梁轴），截面中心\n'
-            u'  端1: %s距端面%.0fmm 深%.0fmm  %s\n'
-            u'  端2: %s距端面%.0fmm 深%.0fmm  %s'
+            tr(u'每根2处攻丝（沿梁轴），截面中心\n  端1: %s距端面%.0fmm 深%.0fmm  %s\n  端2: %s距端面%.0fmm 深%.0fmm  %s')
             % (d, p1, depth, coord1,
                d, p2, depth, coord2))
 
@@ -161,18 +161,18 @@ def hole_note(part, length, hole_spec=None, profile_size=0,
             coord = '(x=%.0f, y=%.0f, z=%.0f)' % (h, h, z)
 
             if i == 0 or i == len(positions) - 1:
-                label = u'底部' if i == 0 else u'顶部'
+                label = tr(u'底部') if i == 0 else tr(u'顶部')
                 lines.append(
-                    u'  %s: %s十字通孔 + %s攻丝 距底面%.0fmm/深%.0fmm  %s'
+                    tr(u'  %s: %s十字通孔 + %s攻丝 距底面%.0fmm/深%.0fmm  %s')
                     % (label, cross_d, tap_d, z, tap_depth, coord))
             else:
-                label = u'第%d层' % (i + 1)
+                label = tr(u'第%d层') % (i + 1)
                 lines.append(
-                    u'  %s: %s十字通孔  %s'
+                    tr(u'  %s: %s十字通孔  %s')
                     % (label, cross_d, coord))
 
         total = len(positions)
-        return (u'Z柱 %d层：每层%s十字通孔，顶底%s攻丝\n%s'
+        return (tr(u'Z柱 %d层：每层%s十字通孔，顶底%s攻丝\n%s')
                 % (total, cross_d, tap_d, '\n'.join(lines)))
     return ''
 
@@ -202,8 +202,9 @@ def export_bom_csv(beams, filepath, material='Aluminum 6061',
     import csv
     with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.writer(f)
-        writer.writerow([u'序号', u'部件', u'型材规格', u'长度(mm)', u'数量',
-                         u'材料', u'总长(mm)', u'打孔说明'])
+        writer.writerow([tr(u'序号'), tr(u'部件'), tr(u'型材规格'),
+                         tr(u'长度(mm)'), tr(u'数量'), tr(u'材料'),
+                         tr(u'总长(mm)'), tr(u'打孔说明')])
         agg = {}
         for b in beams:
             key = (b['part'], b['profile'], b['length'])
@@ -212,11 +213,11 @@ def export_bom_csv(beams, filepath, material='Aluminum 6061',
         for idx, ((part, profile, length), qty) in enumerate(sorted(agg.items()), 1):
             tl = length * qty
             total += tl
-            writer.writerow([idx, part, profile, length, qty, material, tl,
+            writer.writerow([idx, tr(part), profile, length, qty, material, tl,
                              hole_note(part, length, hole_spec, profile_size,
                                        z_layers=z_layers,
                                        z_layer_positions=z_layer_positions)])
-        writer.writerow(['', u'合计', '', '', '', '', total])
+        writer.writerow(['', tr(u'合计'), '', '', '', '', total])
 
 
 def get_bom_summary(beams):

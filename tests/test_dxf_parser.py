@@ -6,9 +6,9 @@ import sys
 import unittest
 
 _here = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+sys.path.insert(0, os.path.dirname(_here))
 
-from AulmFrame.profiles import dxf_parser as dp
+from freecad.AlumFrame.profiles import dxf_parser as dp
 
 
 DXF_DIR = dp.default_dxf_dir()
@@ -22,7 +22,7 @@ class TestPortability(unittest.TestCase):
 
     def test_no_hardcoded_home_path_in_config(self):
         config_path = os.path.join(
-            os.path.dirname(os.path.dirname(_here)), 'AulmFrame', 'config.py')
+            os.path.dirname(_here), 'freecad', 'AlumFrame', 'config.py')
         with open(config_path, encoding='utf-8') as f:
             self.assertNotIn('/home/', f.read())
 

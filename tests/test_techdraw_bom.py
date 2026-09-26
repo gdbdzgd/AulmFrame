@@ -6,9 +6,9 @@ import sys
 import unittest
 
 _here = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+sys.path.insert(0, os.path.dirname(_here))
 
-from AulmFrame import techdraw_bom as td
+from freecad.AlumFrame import techdraw_bom as td
 
 
 A2 = (594.0, 420.0)
@@ -67,8 +67,8 @@ class TestPlanLayout(unittest.TestCase):
                              A2[0] - 2 * td.MARGIN - td.END_BOX - 10.0 + 1e-6)
 
     def test_template_keepout_parsed(self):
-        tpl = os.path.join(os.path.dirname(os.path.dirname(_here)),
-                           'AulmFrame', 'templates', 'A2_Landscape.svg')
+        tpl = os.path.join(os.path.dirname(_here), 'freecad',
+                           'AlumFrame', 'templates', 'A2_Landscape.svg')
         ko = td._template_keepout(tpl, *A2)
         self.assertIsNotNone(ko)
         # title block sits in the lower-right corner of the sheet
@@ -76,8 +76,8 @@ class TestPlanLayout(unittest.TestCase):
         self.assertGreater(ko[2], A2[0] * 0.5)
 
     def test_layout_avoids_titleblock(self):
-        tpl = os.path.join(os.path.dirname(os.path.dirname(_here)),
-                           'AulmFrame', 'templates', 'A2_Landscape.svg')
+        tpl = os.path.join(os.path.dirname(_here), 'freecad',
+                           'AlumFrame', 'templates', 'A2_Landscape.svg')
         ko = td._template_keepout(tpl, *A2)
         plan = td.plan_layout([(6000.0, 40.0)] * 3, *A2, keepout=ko)
         for row in plan['rows']:

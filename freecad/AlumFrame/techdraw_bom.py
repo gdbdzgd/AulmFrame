@@ -19,6 +19,8 @@ except ImportError:
     FreeCAD = None
 
 
+from .i18n import current_language, tr
+
 PAGE_PREFIX = 'TD_'
 
 
@@ -198,6 +200,10 @@ def _materialize_template(template, values):
             pat = re.compile(r'(<text[^>]*freecad:editable="%s"[^>]*>)[^<]*(</text>)'
                              % re.escape(key))
             svg = pat.sub(lambda m, v=str(value): m.group(1) + v + m.group(2), svg)
+        if current_language() == 'en':
+            for zh in (u'铝型材加工图纸', u'规格:', u'比例:', u'图号:',
+                       u'材料:', u'连接:'):
+                svg = svg.replace('>%s<' % zh, '>%s<' % tr(zh))
         digest = hashlib.md5(svg.encode('utf-8')).hexdigest()[:12]
         out = os.path.join(cache, 'A2_%s.svg' % digest)
         with open(out, 'w', encoding='utf-8') as f:
@@ -209,7 +215,7 @@ def _materialize_template(template, values):
 
 def _new_page(doc, name, template):
     page = doc.addObject('TechDraw::DrawPage', PAGE_PREFIX + 'Page_' + name)
-    page.Label = u'图纸 ' + name
+    page.Label = tr(u'图纸') + ' ' + name
     tpl = doc.addObject('TechDraw::DrawSVGTemplate', PAGE_PREFIX + 'Tpl_' + name)
     tpl.Template = template
     page.Template = tpl
@@ -250,7 +256,9 @@ def create_techdraw_bom(doc, base_specs, hole_notes, profile, material,
 
     try:
         from .connections import method_label
-        conn_label = method_label(connection)
+        # method_label() may have been captured at import time; translate
+        # again here so the label follows the language used at build time.
+        conn_label = tr(method_label(connection))
     except Exception:
         conn_label = connection
 
@@ -258,7 +266,7 @@ def create_techdraw_bom(doc, base_specs, hole_notes, profile, material,
 
     # ---- Single page with every member specification ----
     page = _new_page(doc, 'Specs', template)
-    page.Label = u'型材加工图纸'
+    page.Label = tr(u'型材加工图纸')
     page_w, page_h = _template_size(template)
 
     # Fill the template's editable title-block fields (best effort)
@@ -339,14 +347,14 @@ def create_techdraw_bom(doc, base_specs, hole_notes, profile, material,
                      END_BOX / max(ch, 1e-6)), 0.2)
         _dr = 1.0 / _e if _e < 0.999 else 1.0
         head = [
-            u'部件: %s' % sp['label'],
-            u'规格: %s   长度: %.0f mm   数量: %d'
+            tr(u'部件: %s') % tr(sp['label']),
+            tr(u'规格: %s   长度: %.0f mm   数量: %d')
             % (profile, sp['length'], sp['qty']),
-            u'主视图比例 1:%.1f（各型材一致，便于比长短）'
+            tr(u'主视图比例 1:%.1f（各型材一致，便于比长短）')
             % (1.0 / common_scale if common_scale < 0.999 else 1.0),
-            u'端面视图为细节，比例 1:%.1f' % _dr,
+            tr(u'端面视图为细节，比例 1:%.1f') % _dr,
             u'—' * 22,
-            u'打孔方式:',
+            tr(u'打孔方式:'),
         ]
         out = []
         for raw in head:
@@ -356,7 +364,7 @@ def create_techdraw_bom(doc, base_specs, hole_notes, profile, material,
             for raw in note.split('\n'):
                 out.extend(_wrap(raw, max_chars))
         else:
-            out.append(u'无型材加工')
+            out.append(tr(u'无型材加工'))
         return out
 
     note_lines = {sp['key']: _spec_note_lines(sp) for sp in valid_specs}
@@ -437,7 +445,8 @@ def create_techdraw_bom(doc, base_specs, hole_notes, profile, material,
                 u'AlumFrame: TechDraw end view failed for %s (%s)\n' % (key, exc))
 
         # Annotation block (spec / quantity / machining method), left aligned
-        lines = [_to_fullwidth(ln) for ln in note_lines.get(key, [])]
+        conv = _to_fullwidth if current_language() == 'zh' else (lambda t: t)
+        lines = [conv(ln) for ln in note_lines.get(key, [])]
         # A rule line identical in every annotation makes all blocks exactly
         # the same width, so a shared X gives an identical left edge.
         lines.append(u'\u2500' * align_chars)

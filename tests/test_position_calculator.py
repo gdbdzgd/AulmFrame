@@ -6,11 +6,11 @@ import sys
 import unittest
 
 _here = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
+sys.path.insert(0, os.path.dirname(_here))
 
-from AulmFrame.position_calculator import FramePositionCalculator
-from AulmFrame.config import PROFILES, HOLE_SPECS
-from AulmFrame.bom import hole_note, get_bom_summary
+from freecad.AlumFrame.position_calculator import FramePositionCalculator
+from freecad.AlumFrame.config import PROFILES, HOLE_SPECS
+from freecad.AlumFrame.bom import hole_note, get_bom_summary
 
 
 class TestAnchorAndPosts(unittest.TestCase):
