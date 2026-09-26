@@ -6,7 +6,7 @@
   <date>2026-09-26</date>
   <maintainer email="gdbdzgd@gmail.com">gdbdzgd</maintainer>
   <license file="LICENSE">LGPL-2.1-or-later</license>
-  <url type="repository" branch="main">https://github.com/gdbdzgd/AulmFrame</url>
+  <url type="repository" branch="release">https://github.com/gdbdzgd/AulmFrame</url>
   <url type="bugtracker">https://github.com/gdbdzgd/AulmFrame/issues</url>
   <url type="readme">https://raw.githubusercontent.com/gdbdzgd/AulmFrame/main/README_EN.md</url>
   <icon>freecad/AlumFrame/icons/frame_xpm.xpm</icon>
