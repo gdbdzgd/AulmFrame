@@ -271,21 +271,68 @@ _EN = {
 }
 
 
+def map_language(name):
+    """Map a FreeCAD locale name/code (e.g. 'Chinese (Simplified)', 'zh-CN')
+    to 'zh' or 'en'.  Returns None when the name is empty/unknown."""
+    if not name:
+        return None
+    low = str(name).lower()
+    if low.startswith('chinese') or low.startswith('zh'):
+        return 'zh'
+    return 'en'
+
+
+def _detect_language():
+    """Follow FreeCAD's effective language setting.
+
+    Order:
+      1. ``FreeCADGui.getLocale()`` - the resolved UI language. This honours
+         the Language preference *and* its fallback to the system locale;
+      2. the ``Language`` preference (headless / early startup);
+      3. the Qt system locale (no FreeCAD available, e.g. unit tests);
+      4. Chinese (source language) as the last resort.
+    """
+    # 1. resolved GUI locale
+    try:
+        import FreeCADGui
+        name = FreeCADGui.getLocale() or ''
+        if name:
+            try:
+                code = FreeCADGui.supportedLocales().get(name)
+            except Exception:
+                code = None
+            return map_language(code or name)
+    except Exception:
+        pass
+    # 2. preference (works headless as well)
+    name = ''
+    try:
+        import FreeCAD
+        name = FreeCAD.ParamGet(
+            'User parameter:BaseApp/Preferences/General'
+        ).GetString('Language')
+    except Exception:
+        name = ''
+    if name:
+        return map_language(name)
+    # 3. system locale
+    for mod in ('PySide6', 'PySide2', 'PySide'):
+        try:
+            QtCore = __import__(mod + '.QtCore', fromlist=['QtCore'])
+            loc = map_language(QtCore.QLocale.system().name())
+            if loc:
+                return loc
+        except Exception:
+            continue
+    # 4. source language
+    return 'zh'
+
+
 def current_language():
-    """Return 'zh' or 'en' from FreeCAD's UI language setting."""
+    """Return 'zh' or 'en' following FreeCAD's UI language setting."""
     global _CURRENT
     if _CURRENT is None:
-        lang = 'zh'
-        try:
-            import FreeCAD
-            name = FreeCAD.ParamGet(
-                'User parameter:BaseApp/Preferences/General'
-            ).GetString('Language')
-            if name and not name.lower().startswith('chinese'):
-                lang = 'en'
-        except Exception:
-            lang = 'zh'
-        _CURRENT = lang
+        _CURRENT = _detect_language()
     return _CURRENT
 
 
