@@ -53,6 +53,63 @@ class TestBeams(unittest.TestCase):
         self.assertEqual(self.c.get_y_beam_spacing(), 560)
 
 
+class TestRectangularProfile(unittest.TestCase):
+    def setUp(self):
+        # 20 wide (X) x 40 tall (Y) profile, e.g. E2040
+        self.c = FramePositionCalculator(600, 400, 500, 20, 40)
+
+    def test_anchor(self):
+        self.assertAlmostEqual(self.c.z_post_anchor_x, -300.0)
+        self.assertAlmostEqual(self.c.z_post_anchor_y, -200.0)
+
+    def test_beam_lengths_use_each_axis(self):
+        self.assertEqual(self.c.get_x_beam_length(), 600 - 2 * 20)
+        self.assertEqual(self.c.get_y_beam_length(), 400 - 2 * 40)
+
+    def test_beam_spacings_use_each_axis(self):
+        self.assertEqual(self.c.get_x_beam_spacing(), 400 - 40)
+        self.assertEqual(self.c.get_y_beam_spacing(), 600 - 20)
+
+    def test_post_spacing(self):
+        self.assertEqual(self.c.get_z_post_spacing(), (600 - 20, 400 - 40))
+
+    def test_beam_placements(self):
+        self.assertAlmostEqual(self.c.get_x_beam_placement()[1], -180.0)
+        self.assertAlmostEqual(self.c.get_y_beam_placement()[0], -290.0)
+
+    def test_layer_spacing_uses_vertical_extent(self):
+        self.assertAlmostEqual(self.c.get_z_layer_spacing(2), (500 - 40) / 2)
+
+
+class TestOrientation(unittest.TestCase):
+    def test_default_orientation(self):
+        c = FramePositionCalculator(600, 400, 500, 20, 40)
+        self.assertEqual(c.get_post_section(), (20, 40))
+        self.assertEqual(c.get_beam_section(), (20, 40))
+        self.assertEqual(c.get_x_beam_length(), 600 - 2 * 20)
+        self.assertEqual(c.get_y_beam_length(), 400 - 2 * 40)
+
+    def test_post_rotated(self):
+        c = FramePositionCalculator(600, 400, 500, 20, 40, post_along_x='b')
+        self.assertEqual(c.get_post_section(), (40, 20))
+        self.assertEqual(c.get_x_beam_length(), 600 - 2 * 40)
+        self.assertEqual(c.get_y_beam_length(), 400 - 2 * 20)
+        self.assertEqual(c.get_x_beam_placement()[1], -200 + 20 / 2)
+        self.assertEqual(c.get_y_beam_placement()[0], -300 + 40 / 2)
+
+    def test_beam_vertical_swapped(self):
+        c = FramePositionCalculator(600, 400, 500, 20, 40, beam_vertical='a')
+        self.assertEqual(c.get_beam_section(), (40, 20))
+        self.assertAlmostEqual(c.get_z_layer_spacing(2), (500 - 20) / 2)
+
+    def test_orientation_from_rounded_dict(self):
+        c = FramePositionCalculator(600, 400, 500, 20, 40,
+                                    post_along_x='x', beam_vertical='q')
+        # invalid values fall back to defaults
+        self.assertEqual(c.get_post_section(), (20, 40))
+        self.assertEqual(c.get_beam_section(), (20, 40))
+
+
 class TestZLayers(unittest.TestCase):
     def test_two_layers(self):
         c = FramePositionCalculator(600, 400, 500, 40)

@@ -23,6 +23,7 @@ import FreeCAD
 import FreeCADGui
 
 from .config import PROFILES
+from .connections import METHODS as CONNECTION_METHODS, METHOD_ORDER
 from . import make_frame, get_bom_summary, export_bom_csv
 from .frame_builder import FrameBuilder
 
@@ -43,6 +44,8 @@ class AlumFrameTaskPanel:
 
     # ========== UI ==========
     def _build_ui(self):
+        # Only regular sections are offered now; DXF contour variants are no
+        # longer registered (config.PROFILES holds parametric + square only).
         layout = QtWidgets.QVBoxLayout(self.form)
         layout.setSpacing(10)
         layout.setContentsMargins(10, 10, 10, 10)
@@ -94,8 +97,63 @@ class AlumFrameTaskPanel:
         self.z_layers_spin.setValue(1)
         params_layout.addRow(u'Z层数:', self.z_layers_spin)
 
+        # Section orientation (meaningful for rectangular profiles only)
+        self.post_dir_combo = QtWidgets.QComboBox()
+        self.post_dir_combo.addItem(u'第一尺寸(a)沿X', 'a')
+        self.post_dir_combo.addItem(u'第二尺寸(b)沿X', 'b')
+        self.post_dir_combo.setToolTip(u'矩形立柱截面方向：哪个尺寸沿框架X轴')
+        params_layout.addRow(u'立柱方向:', self.post_dir_combo)
+
+        self.beam_dir_combo = QtWidgets.QComboBox()
+        self.beam_dir_combo.addItem(u'第二尺寸(b)竖直', 'b')
+        self.beam_dir_combo.addItem(u'第一尺寸(a)竖直', 'a')
+        self.beam_dir_combo.setToolTip(u'矩形横梁截面方向：哪个尺寸竖直（X/Y梁共用）')
+        params_layout.addRow(u'横梁竖直:', self.beam_dir_combo)
+
+        self.connection_combo = QtWidgets.QComboBox()
+        for cid in METHOD_ORDER:
+            self.connection_combo.addItem(CONNECTION_METHODS[cid]['label'], cid)
+        # Default to the common end-tap method (bracket does no machining).
+        _di = self.connection_combo.findData('end_tap')
+        if _di >= 0:
+            self.connection_combo.setCurrentIndex(_di)
+        self.connection_combo.setToolTip(
+            u'连接方式：决定端面攻丝/侧孔/贯穿孔等加工')
+        params_layout.addRow(u'连接方式:', self.connection_combo)
+
         self.material_edit = QtWidgets.QLineEdit('Aluminum 6061')
         params_layout.addRow(u'材料:', self.material_edit)
+
+        self.hole_dia_spin = QtWidgets.QDoubleSpinBox()
+        self.hole_dia_spin.setRange(0.0, 100.0)
+        self.hole_dia_spin.setDecimals(1)
+        self.hole_dia_spin.setValue(0.0)
+        self.hole_dia_spin.setSuffix(' mm')
+        self.hole_dia_spin.setSpecialValueText(u'自动(推荐)')
+        self.hole_dia_spin.setToolTip(
+            u'连接孔直径；0=按型材推荐值。上限=型材宽度的一半')
+        params_layout.addRow(u'开孔孔径:', self.hole_dia_spin)
+
+        self.hole_depth_spin = QtWidgets.QDoubleSpinBox()
+        self.hole_depth_spin.setRange(0.0, 200.0)
+        self.hole_depth_spin.setDecimals(1)
+        self.hole_depth_spin.setValue(0.0)
+        self.hole_depth_spin.setSuffix(' mm')
+        self.hole_depth_spin.setSpecialValueText(u'自动(推荐)')
+        params_layout.addRow(u'开孔深度:', self.hole_depth_spin)
+
+        self.hole_off_spin = QtWidgets.QDoubleSpinBox()
+        self.hole_off_spin.setRange(0.0, 200.0)
+        self.hole_off_spin.setDecimals(1)
+        self.hole_off_spin.setValue(0.0)
+        self.hole_off_spin.setSuffix(' mm')
+        self.hole_off_spin.setSpecialValueText(u'自动(推荐)')
+        self.hole_off_spin.setToolTip(u'孔位距端面距离；0=按推荐值')
+        params_layout.addRow(u'孔位距端:', self.hole_off_spin)
+
+        self.techdraw_check = QtWidgets.QCheckBox(u'生成 TechDraw 图纸（每规格一页）')
+        self.techdraw_check.setChecked(True)
+        params_layout.addRow(u'出图:', self.techdraw_check)
 
         layout.addWidget(params_group)
 
@@ -148,6 +206,13 @@ class AlumFrameTaskPanel:
             'height': self.height_spin.value(),
             'z_layers': self.z_layers_spin.value(),
             'material': self.material_edit.text() or 'Aluminum 6061',
+            'post_along_x': self.post_dir_combo.currentData(),
+            'beam_vertical': self.beam_dir_combo.currentData(),
+            'connection': self.connection_combo.currentData(),
+            'techdraw': self.techdraw_check.isChecked(),
+            'hole_diameter': self.hole_dia_spin.value(),
+            'hole_depth': self.hole_depth_spin.value(),
+            'hole_offset': self.hole_off_spin.value(),
         }
 
     def _apply_params(self, p):
@@ -159,6 +224,19 @@ class AlumFrameTaskPanel:
         self.height_spin.setValue(p.get('height', 500))
         self.z_layers_spin.setValue(max(1, p.get('z_layers', 1)))
         self.material_edit.setText(p.get('material', 'Aluminum 6061'))
+        pi = self.post_dir_combo.findData(p.get('post_along_x', 'a'))
+        if pi >= 0:
+            self.post_dir_combo.setCurrentIndex(pi)
+        bi = self.beam_dir_combo.findData(p.get('beam_vertical', 'b'))
+        if bi >= 0:
+            self.beam_dir_combo.setCurrentIndex(bi)
+        ci = self.connection_combo.findData(p.get('connection', 'end_tap'))
+        if ci >= 0:
+            self.connection_combo.setCurrentIndex(ci)
+        self.techdraw_check.setChecked(bool(p.get('techdraw', True)))
+        self.hole_dia_spin.setValue(float(p.get('hole_diameter', 0.0)))
+        self.hole_depth_spin.setValue(float(p.get('hole_depth', 0.0)))
+        self.hole_off_spin.setValue(float(p.get('hole_offset', 0.0)))
 
     def _update_target_label(self):
         if self._target_doc_name:
@@ -223,7 +301,14 @@ class AlumFrameTaskPanel:
         try:
             doc, beams = make_frame(
                 p['profile'], p['length'], p['width'], p['height'],
-                p['material'], p['z_layers'], doc=doc)
+                p['material'], p['z_layers'], doc=doc,
+                post_along_x=p['post_along_x'],
+                beam_vertical=p['beam_vertical'],
+                connection=p['connection'],
+                techdraw=p['techdraw'],
+                hole_params={'diameter': p['hole_diameter'],
+                             'depth': p['hole_depth'],
+                             'offset': p['hole_offset']})
             self._target_doc_name = doc.Name
             self._last_beams = beams
             self._update_target_label()
@@ -265,6 +350,24 @@ class AlumFrameTaskPanel:
 
     def reject(self):
         FreeCADGui.Control.closeDialog()
+
+
+def active_frame():
+    """Return the Frame group in the active document (or from selection)."""
+    frame = None
+    try:
+        for obj in FreeCADGui.Selection.getSelection():
+            frame = FrameBuilder.find_frame_group(obj=obj)
+            if frame is not None:
+                break
+    except Exception:
+        frame = None
+    if frame is None:
+        try:
+            frame = FrameBuilder.find_frame_group(doc=FreeCAD.ActiveDocument)
+        except Exception:
+            frame = None
+    return frame
 
 
 def open_task_panel(edit_selected=False):

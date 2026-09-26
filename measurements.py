@@ -18,7 +18,8 @@ except ImportError:
 
 
 def add_measurement_annotations(doc, group, outer_length, outer_width,
-                                outer_height, z_layers, bases, profile_size):
+                                outer_height, z_layers, bases, profile_size,
+                                profile_height=None):
     """Add dimension annotations using Measure::MeasureLength objects.
 
     Parameters
@@ -33,8 +34,11 @@ def add_measurement_annotations(doc, group, outer_length, outer_width,
     bases : dict
         {'X': x_beam_base, 'Y': y_beam_base, 'Z': z_post_base}
     profile_size : float
-        Profile width (mm)
+        Profile extent along X (mm)
+    profile_height : float, optional
+        Profile extent along Y (mm). Defaults to profile_size.
     """
+    profile_height = profile_size if profile_height is None else profile_height
     post = bases.get('Z')
     x_base = bases.get('X')
     y_base = bases.get('Y')
@@ -45,18 +49,18 @@ def add_measurement_annotations(doc, group, outer_length, outer_width,
     dim_group.Label = u'尺寸标注'
     group.addObject(dim_group)
 
-    # Length (X) = profile + (L - 2*profile) + profile
+    # Length (X) = profile_x + (L - 2*profile_x) + profile_x
     _add_length_measure(doc, dim_group, 'DimX', u'长度 (X)', [
         (post, profile_size, 'x'),
         (x_base, outer_length - 2 * profile_size, 'x'),
         (post, profile_size, 'x'),
     ])
 
-    # Width (Y) = profile + (W - 2*profile) + profile
+    # Width (Y) = profile_y + (W - 2*profile_y) + profile_y
     _add_length_measure(doc, dim_group, 'DimY', u'宽度 (Y)', [
-        (post, profile_size, 'y'),
-        (y_base, outer_width - 2 * profile_size, 'y'),
-        (post, profile_size, 'y'),
+        (post, profile_height, 'y'),
+        (y_base, outer_width - 2 * profile_height, 'y'),
+        (post, profile_height, 'y'),
     ])
 
     # Height (Z) - single vertical post edge
@@ -108,7 +112,9 @@ def _add_length_measure(doc, group, name, label, chain):
         m = doc.addObject('Measure::MeasureLength', name)
         m.Label = label
         m.Elements = elements
-        doc.recompute()
+        # No per-measure recompute here: the caller triggers a single document
+        # recompute after the whole frame is built, avoiding N expensive full
+        # recomputes when several dimensions are added.
         group.addObject(m)
         return m
     except Exception as e:

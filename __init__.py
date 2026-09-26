@@ -22,9 +22,11 @@ from .frame_builder import FrameBuilder
 from .config import PROFILES
 
 
-def make_frame(profile, length, width, height, material='Aluminum 6061', z_layers=1, doc=None):
+def make_frame(profile, length, width, height, material='Aluminum 6061',
+               z_layers=1, doc=None, post_along_x='a', beam_vertical='b',
+               connection='end_tap', techdraw=True, hole_params=None):
     """Build an aluminum frame - main entry point.
-    
+
     Parameters
     ----------
     profile : str
@@ -42,7 +44,19 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
     doc : FreeCAD document, optional
         Target document for in-place update. If None a new document
         is created.
-        
+    post_along_x : {'a', 'b'}
+        Which section dimension the Z post uses along frame X (rectangular
+        sections; ignored when square).
+    beam_vertical : {'a', 'b'}
+        Which section dimension the X/Y beams use vertically.
+    connection : str
+        Connection method id from connections.METHODS (drives hole layout).
+    techdraw : bool
+        Generate TechDraw pages (one per member spec) when available.
+    hole_params : dict, optional
+        Overrides for connection holes: {'diameter': mm, 'depth': mm,
+        'offset': mm}. Diameter is clamped to half the section width.
+
     Returns
     -------
     doc : FreeCAD document
@@ -50,7 +64,13 @@ def make_frame(profile, length, width, height, material='Aluminum 6061', z_layer
         List of beam metadata
     """
     builder = FrameBuilder()
-    return builder.build_frame(profile, length, width, height, material, z_layers, doc=doc)
+    return builder.build_frame(profile, length, width, height, material,
+                               z_layers, doc=doc,
+                               post_along_x=post_along_x,
+                               beam_vertical=beam_vertical,
+                               connection=connection,
+                               techdraw=techdraw,
+                               hole_params=hole_params)
 
 
 # Backward compatibility

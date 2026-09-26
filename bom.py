@@ -6,9 +6,10 @@ BOM (Bill of Materials) module for Aluminum Frame Generator.
 
 def create_bom_spreadsheet(doc, beams, material, z_layers,
                            hole_spec=None, profile_size=0,
-                           z_layer_positions=None):
+                           z_layer_positions=None, hole_notes=None,
+                           hardware=None, connection=None):
     """Create a BOM spreadsheet in the document.
-    
+
     Parameters
     ----------
     doc : FreeCAD document
@@ -25,6 +26,14 @@ def create_bom_spreadsheet(doc, beams, material, z_layers,
         Profile width (mm), used to compute hole positions
     z_layer_positions : list, optional
         Z positions of each layer (mm), for Z post hole calculation
+    hole_notes : dict, optional
+        Pre-computed per-part machining notes
+        (u'X-横梁' / u'Y-纵梁' / u'Z-立柱' -> text). Overrides the default
+        per-profile hole_note() when the connection method supplies its own.
+    hardware : list, optional
+        [(name, qty)] connector hardware summary.
+    connection : str, optional
+        Connection method id used for this frame.
     """
     bom = doc.addObject('Spreadsheet::Sheet', 'BOM')
     bom.Label = u'BOM 规格表'
@@ -50,10 +59,13 @@ def create_bom_spreadsheet(doc, beams, material, z_layers,
         bom.set('F' + str(row), material)
         tl = length * qty
         bom.set('G' + str(row), str(tl))
-        bom.set('H' + str(row),
-                hole_note(part, length, hole_spec, profile_size,
-                          z_layers=z_layers,
-                          z_layer_positions=z_layer_positions))
+        if hole_notes and part in hole_notes:
+            bom.set('H' + str(row), hole_notes[part])
+        else:
+            bom.set('H' + str(row),
+                    hole_note(part, length, hole_spec, profile_size,
+                              z_layers=z_layers,
+                              z_layer_positions=z_layer_positions))
         total_len += tl
         row += 1
     
@@ -64,7 +76,22 @@ def create_bom_spreadsheet(doc, beams, material, z_layers,
     row += 2
     bom.set('A' + str(row), u'外形尺寸')
     bom.set('B' + str(row), u'Z层数: %d' % z_layers)
-    
+    if connection:
+        row += 1
+        bom.set('A' + str(row), u'连接方式')
+        bom.set('B' + str(row), connection)
+
+    if hardware:
+        row += 2
+        bom.set('A' + str(row), u'连接五金')
+        bom.set('B' + str(row), u'名称')
+        bom.set('C' + str(row), u'数量')
+        row += 1
+        for name, qty in hardware:
+            bom.set('B' + str(row), name)
+            bom.set('C' + str(row), str(qty))
+            row += 1
+
     return bom
 
 
@@ -123,29 +150,30 @@ def hole_note(part, length, hole_spec=None, profile_size=0,
         tap_d = hole_spec['post_tap']
         tap_depth = round(int(tap_d[1:]) * 1.5)
         h = profile_size / 2.0
-        
+
         if z_layer_positions:
             positions = z_layer_positions
         else:
             positions = [c, round(length - c, 1)]
-        
+
         lines = []
         for i, z in enumerate(positions):
             coord = '(x=%.0f, y=%.0f, z=%.0f)' % (h, h, z)
-            
+
             if i == 0 or i == len(positions) - 1:
                 label = u'底部' if i == 0 else u'顶部'
                 lines.append(
-                    u'  %s: M5十字通孔 + M6攻丝 距底面%.0fmm/深%.0fmm  %s'
-                    % (label, z, tap_depth, coord))
+                    u'  %s: %s十字通孔 + %s攻丝 距底面%.0fmm/深%.0fmm  %s'
+                    % (label, cross_d, tap_d, z, tap_depth, coord))
             else:
                 label = u'第%d层' % (i + 1)
                 lines.append(
-                    u'  %s: M5十字通孔  %s'
-                    % (label, coord))
-        
+                    u'  %s: %s十字通孔  %s'
+                    % (label, cross_d, coord))
+
         total = len(positions)
-        return u'Z柱 %d层：每层M5十字通孔，顶底M6攻丝\n%s' % (total, '\n'.join(lines))
+        return (u'Z柱 %d层：每层%s十字通孔，顶底%s攻丝\n%s'
+                % (total, cross_d, tap_d, '\n'.join(lines)))
     return ''
 
 
@@ -212,3 +240,33 @@ def get_bom_summary(beams):
         summary[key]['length'] += b['length'] * b.get('qty', 1)
         summary[key]['qty'] += b.get('qty', 1)
     return summary
+
+
+def export_bom_sheet_csv(bom_obj, filepath):
+    """Export an existing BOM spreadsheet object to a CSV file."""
+    import csv
+    cols = 'ABCDEFGH'
+    rows = []
+    blanks = 0
+    for r in range(1, 400):
+        line = []
+        empty = True
+        for c in cols:
+            try:
+                v = bom_obj.get(c + str(r))
+            except Exception:
+                v = None
+            if v not in (None, ''):
+                empty = False
+            line.append('' if v is None else v)
+        if empty:
+            blanks += 1
+            if blanks >= 3 and rows:
+                break
+            continue
+        blanks = 0
+        rows.append(line)
+    with open(filepath, 'w', newline='', encoding='utf-8-sig') as f:
+        writer = csv.writer(f)
+        writer.writerows(rows)
+    return filepath
