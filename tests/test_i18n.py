@@ -22,6 +22,15 @@ class TestI18n(unittest.TestCase):
     def tearDown(self):
         i18n.set_language(None)
 
+    def test_map_language(self):
+        self.assertEqual(i18n.map_language(u'Chinese (Simplified)'), 'zh')
+        self.assertEqual(i18n.map_language('zh_CN'), 'zh')
+        self.assertEqual(i18n.map_language('zh-CN'), 'zh')
+        self.assertEqual(i18n.map_language('English'), 'en')
+        self.assertEqual(i18n.map_language('Deutsch'), 'en')
+        self.assertIsNone(i18n.map_language(''))
+        self.assertIsNone(i18n.map_language(None))
+
     def test_chinese_is_identity(self):
         i18n.set_language('zh')
         self.assertEqual(i18n.tr(u'新建框架'), u'新建框架')

@@ -15,7 +15,7 @@ FreeCAD 工作台插件，用于快速创建参数化铝型材方管框架，自
 | 尺寸标注 | `Measure::MeasureLength`，含柱距/净空/总外形 |
 | 编辑已有框架 | 选中 Frame → Edit Frame，面板预填当前参数 |
 | CSV 导出 | BOM 可导出 CSV，方便采购 |
-| 中英文界面 | 菜单/面板/提示/**BOM/图纸文字**跟随 FreeCAD 语言（中文或 English），见 `i18n.py` |
+| 中英文界面 | 菜单/面板/提示/**BOM/图纸文字**跟随 FreeCAD 语言设置（中文或 English），见 `i18n.py` |
 
 ---
 
@@ -316,6 +316,18 @@ AulmFrame/
 ├── README.md             # 中文说明
 └── README_EN.md          # English README
 ```
+
+---
+
+## 界面语言
+
+- 语言跟随 **FreeCAD 的语言设置**（`编辑 → 首选项 → 常规 → 语言`），
+  包括任务面板、菜单、提示、**BOM 表格/CSV 内容**与**TechDraw 图纸文字**
+  （注释、标题栏、尺寸标注）；
+- 检测顺序：`FreeCADGui.getLocale()`（当前生效语言）→ `Language` 偏好
+  （无界面/启动早期）→ 系统 locale（偏好留空时的 FreeCAD 行为）→ 中文；
+  语言改动与其他 FreeCAD 界面一样，**需重启 FreeCAD 生效**；
+- 非中文语言一律回退为英文（当前内置中/英两种文案）。
 
 ---
 

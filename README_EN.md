@@ -17,7 +17,7 @@ coordinates) and dimension annotations.
 | Dimensions | `Measure::MeasureLength` annotations incl. post spacing, clearance, overall size |
 | Edit existing frame | Select the Frame → Edit Frame; the panel pre-fills current parameters |
 | CSV export | Export the BOM to CSV for purchasing |
-| Chinese / English UI | Menus / panel / messages / **BOM / drawing text** follow FreeCAD's language (see `i18n.py`) |
+| Chinese / English UI | Menus / panel / messages / **BOM / drawing text** follow FreeCAD's language setting (see `i18n.py`) |
 
 ---
 
@@ -358,6 +358,22 @@ AulmFrame/
 ├── README.md             # Chinese README
 └── README_EN.md          # this file
 ```
+
+---
+
+## UI language
+
+- The addon follows **FreeCAD's language setting**
+  (`Edit → Preferences → General → Language`) for the task panel, menus,
+  messages, **BOM spreadsheet/CSV content** and **TechDraw drawing text**
+  (annotations, title block, dimensions);
+- Detection order: `FreeCADGui.getLocale()` (the effective UI language) ->
+  the `Language` preference (headless / early startup) -> the system locale
+  (FreeCAD's behaviour when the preference is empty) -> Chinese;
+  as with the rest of FreeCAD, a language change takes effect after a
+  **restart**;
+- Any non-Chinese language falls back to English (only zh/en texts are
+  bundled today).
 
 ---
 
